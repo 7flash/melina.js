@@ -1,4 +1,4 @@
-import { build as bunBuild, type BuildConfig, type BunFile, plugin } from "bun";
+import { build as bunBuild, type BuildConfig, type BunFile } from "bun";
 import path from "path";
 import { randomUUID } from "crypto";
 import { existsSync, readdirSync, readFileSync } from "fs";
@@ -9,25 +9,11 @@ import tailwind from "@tailwindcss/postcss";
 import fs from 'fs';
 import { unlink } from 'fs/promises';
 
-import { measure } from "@ments/utils";
+import { measure } from "./utils";
 import { dedent } from "ts-dedent";
 import { discoverRoutes, matchRoute, type Route, type RouteMatch } from "./router";
 
-// ============================================================================
-// MELINA.JS - Server-rendered HTML + Client mount/unmount architecture
-// ============================================================================
-
-function resolveFile(basePath: string): string | null {
-  if (existsSync(basePath)) return basePath;
-  const extensions = ['.tsx', '.jsx', '.ts', '.js'];
-  for (const ext of extensions) {
-    if (existsSync(basePath + ext)) return basePath + ext;
-  }
-  return null;
-}
-
 console.log('🦊 [Melina] Ready');
-
 
 type HandlerResponse = Response | AsyncGenerator<string, void, unknown> | string | object;
 
@@ -51,16 +37,6 @@ function generateRequestId(): string {
 }
 
 const isDev = process.env.NODE_ENV !== "production";
-
-/**
- * Import a module for SSR.
- * Simply imports the module - no transformation needed anymore.
- */
-async function importSSR(filePath: string) {
-  // Add timestamp query to bypass ESM cache in dev
-  const timestamp = isDev ? `?t=${Date.now()}` : '';
-  return import(`${filePath}${timestamp}`);
-}
 
 // Global cleanup function for unix socket
 let cleanupUnixSocket: (() => Promise<void>) | null = null;
@@ -104,11 +80,6 @@ export async function imports(
   // Process top-level dependencies
   Object.entries(dependencies).forEach(([name, versionSpec]) => {
     if (typeof versionSpec !== 'string') return;
-
-    // Skip local file dependencies - they can't be resolved by esm.sh
-    if (versionSpec.startsWith('file:') || versionSpec.startsWith('link:')) {
-      return;
-    }
 
     const cleanVersion = getCleanVersion(versionSpec);
     let peerDeps: string[] = [];
@@ -249,122 +220,38 @@ export async function imports(
 const buildCache: Record<string, { outputPath: string; content: ArrayBuffer }> = {};
 const builtAssets: Record<string, { content: ArrayBuffer; contentType: string }> = {};
 
-// Cached runtime bundle path
-let cachedRuntimePath: string | null = null;
-
-// In-flight build deduplication — prevents concurrent Bun.build() calls
-// from exhausting resources and deadlocking the server
-let runtimeBuildInFlight: Promise<string> | null = null;
-const clientBuildInFlight: Map<string, Promise<string>> = new Map();
+// Build deduplication — prevent concurrent builds of the same file
+const buildInFlight = new Map<string, Promise<string>>();
 
 /**
- * Build the Melina client runtime from TypeScript source
- * This bundles src/runtime.ts and serves it from memory
- * 
- * The runtime handles:
- * - Page mount/unmount lifecycle
- * - Client-side navigation with View Transitions
- * - Link interception
- */
-async function buildRuntime(): Promise<string> {
-  // Return cached path if available
-  if (cachedRuntimePath && !isDev) {
-    return cachedRuntimePath;
-  }
-
-  // If a build is already in flight, return the same promise
-  if (runtimeBuildInFlight) {
-    return runtimeBuildInFlight;
-  }
-
-  runtimeBuildInFlight = _buildRuntimeImpl();
-  try {
-    return await runtimeBuildInFlight;
-  } finally {
-    runtimeBuildInFlight = null;
-  }
-}
-
-async function _buildRuntimeImpl(): Promise<string> {
-
-  const runtimePath = path.resolve(__dirname, './runtime.ts');
-
-  if (!existsSync(runtimePath)) {
-    throw new Error(`Melina runtime not found at: ${runtimePath}`);
-  }
-
-  const buildConfig: BuildConfig = {
-    entrypoints: [runtimePath],
-    outdir: undefined,
-    minify: !isDev,
-    target: "browser",
-    sourcemap: isDev ? "linked" : "none",
-    define: {
-      "process.env.NODE_ENV": JSON.stringify(isDev ? "development" : "production"),
-    },
-    naming: {
-      entry: "melina-runtime-[hash].[ext]",
-      chunk: "[name]-[hash].[ext]",
-      asset: "[name]-[hash].[ext]",
-    },
-  };
-
-  const result = await bunBuild(buildConfig);
-
-  const mainOutput = result.outputs.find(o => o.kind === 'entry-point');
-  if (!mainOutput) {
-    throw new Error('Failed to build Melina runtime');
-  }
-
-  for (const output of result.outputs) {
-    const content = await output.arrayBuffer();
-    const outputPath = `/${path.basename(output.path)}`;
-    const contentType = output.type || getContentType(path.extname(output.path));
-    builtAssets[outputPath] = { content, contentType };
-  }
-
-  cachedRuntimePath = `/${path.basename(mainOutput.path)}`;
-  console.log(`🦊 [Melina] Runtime bundled: ${cachedRuntimePath}`);
-
-  return cachedRuntimePath;
-}
-
-// Cache for built client scripts
-const clientScriptCache: Record<string, string> = {};
-
-// Track which built client scripts use React (need import maps in <head>)
-const clientScriptsUsingReact = new Set<string>();
-
-/**
- * Build a page or layout client script.
+ * Build a client mount script (.client.tsx) with the jsx-dom plugin.
+ * JSX in client scripts creates real DOM elements, not virtual DOM.
  *
- * Auto-detects the client framework:
- * - If the source imports from 'react' or 'react-dom' → React mode:
- *   React/ReactDOM are marked external and resolved via import maps at runtime.
- * - Otherwise → Vanilla mode:
- *   JSX runtime is swapped with jsx-dom.ts (JSX → real DOM elements).
+ * If the client script imports from 'react' or 'react-dom', it is built
+ * in React mode instead (externalized, resolved via import maps).
  */
 async function buildClientScript(clientPath: string): Promise<string> {
-  if (!isDev && clientScriptCache[clientPath]) {
-    return clientScriptCache[clientPath];
-  }
+  // Dedup: if already building this file, wait for it
+  const existing = buildInFlight.get(clientPath);
+  if (existing) return existing;
 
-  // If a build for this path is already in flight, return the same promise
-  const inflight = clientBuildInFlight.get(clientPath);
-  if (inflight) {
-    return inflight;
-  }
-
-  const buildPromise = _buildClientScriptImpl(clientPath);
-  clientBuildInFlight.set(clientPath, buildPromise);
+  const promise = _buildClientScriptImpl(clientPath);
+  buildInFlight.set(clientPath, promise);
   try {
-    return await buildPromise;
+    return await promise;
   } finally {
-    clientBuildInFlight.delete(clientPath);
+    buildInFlight.delete(clientPath);
   }
 }
 
+// Track which client scripts need React import maps
+const clientScriptsUsingReact = new Set<string>();
+
 async function _buildClientScriptImpl(clientPath: string): Promise<string> {
+  // Return cached result in production
+  if (!isDev && buildCache[clientPath]) {
+    return buildCache[clientPath].outputPath;
+  }
 
   // Detect whether this client script explicitly imports React.
   // If yes → externalize react/react-dom (resolved via import maps at runtime).
@@ -381,6 +268,7 @@ async function _buildClientScriptImpl(clientPath: string): Promise<string> {
   if (usesReact) {
     // React mode: mark react + react-dom as external, import maps will resolve them
     external.push('react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-dom/client');
+    clientScriptsUsingReact.add(clientPath);
   } else {
     // Vanilla mode: redirect JSX runtime to our jsx-dom (real DOM creation)
     plugins.push({
@@ -393,29 +281,27 @@ async function _buildClientScriptImpl(clientPath: string): Promise<string> {
     });
   }
 
-  const buildConfig: BuildConfig = {
+  const result = await bunBuild({
     entrypoints: [clientPath],
     outdir: undefined,
+    target: 'browser',
     minify: !isDev,
-    target: "browser",
-    sourcemap: isDev ? "linked" : "none",
-    external: external.length > 0 ? external : undefined,
+    sourcemap: isDev ? 'linked' : 'none',
+    external,
+    plugins,
     define: {
-      "process.env.NODE_ENV": JSON.stringify(isDev ? "development" : "production"),
+      'process.env.NODE_ENV': JSON.stringify(isDev ? 'development' : 'production'),
     },
     naming: {
-      entry: "[name]-[hash].[ext]",
-      chunk: "[name]-[hash].[ext]",
-      asset: "[name]-[hash].[ext]",
+      entry: '[name]-[hash].[ext]',
+      chunk: '[name]-[hash].[ext]',
+      asset: '[name]-[hash].[ext]',
     },
-    plugins,
-  };
-
-  const result = await bunBuild(buildConfig);
+  });
 
   const mainOutput = result.outputs.find(o => o.kind === 'entry-point');
   if (!mainOutput) {
-    throw new Error(`Failed to build client script: ${clientPath}`);
+    throw new Error(`Client script build failed: ${clientPath}`);
   }
 
   for (const output of result.outputs) {
@@ -426,15 +312,7 @@ async function _buildClientScriptImpl(clientPath: string): Promise<string> {
   }
 
   const outputPath = `/${path.basename(mainOutput.path)}`;
-  clientScriptCache[clientPath] = outputPath;
-
-  if (usesReact) {
-    clientScriptsUsingReact.add(outputPath);
-    console.log(`📦 [Melina] Client script built (React mode): ${path.basename(clientPath)} -> ${outputPath}`);
-  } else {
-    console.log(`📦 [Melina] Client script built: ${path.basename(clientPath)} -> ${outputPath}`);
-  }
-
+  buildCache[clientPath] = { outputPath, content: await mainOutput.arrayBuffer() };
   return outputPath;
 }
 
@@ -526,8 +404,7 @@ export async function buildScript(filePath: string, allExternal = false): Promis
   }
 
   const dependencies = { ...(packageJson.dependencies || {}) };
-  // Exclude melina from externals - bundle it inline for React-free client
-  let external = Object.keys(dependencies).filter(dep => !dep.startsWith('melina'));
+  let external = Object.keys(dependencies);
   if (allExternal) external = ["*"];
 
   const buildConfig: BuildConfig = {
@@ -705,26 +582,30 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
   let port: number | undefined;
   let unix: string | undefined;
 
-  // Track whether the port was explicitly requested — if so, don't silently fallback
-  let portExplicit = false;
-
   if (options?.port !== undefined) {
     port = options.port;
-    portExplicit = true;
   } else if (options?.unix !== undefined) {
     unix = options.unix;
   } else {
-    // Auto-detect from BUN_PORT env var
+    // Auto-detect from BUN_PORT env var OR CLI argument
     const bunPort = process.env.BUN_PORT;
+    // Only consider CLI arg if it's not a flag (e.g. "--_serve" should not become a unix socket)
+    const cliArg = process.argv[2];
+    const isFlag = cliArg?.startsWith('-');
 
     if (bunPort) {
       const parsedPort = parseInt(bunPort, 10);
       if (!isNaN(parsedPort)) {
         port = parsedPort;
-        portExplicit = true;
       } else {
-        // Non-numeric BUN_PORT is treated as a unix socket path
         unix = bunPort;
+      }
+    } else if (cliArg && !isFlag) {
+      const parsedPort = parseInt(cliArg, 10);
+      if (!isNaN(parsedPort)) {
+        port = parsedPort;
+      } else {
+        unix = cliArg;
       }
     }
   }
@@ -878,26 +759,9 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
   let server;
   try {
     server = Bun.serve(args);
-  } catch (err: any) {
-    const isPortUnavailable = !unix && (
-      err.code === 'EADDRINUSE' ||
-      err.code === 'EACCES' ||
-      err.errno === 10013 ||
-      err.message?.includes('EADDRINUSE') ||
-      err.message?.includes('EACCES') ||
-      err.message?.includes('Address already in use') ||
-      err.message?.includes('Failed to listen')
-    );
-    if (isPortUnavailable) {
-      if (portExplicit) {
-        // Port was explicitly requested — don't silently fallback, let caller handle it
-        const requestedPort = (args as any).port || 3000;
-        throw new Error(`Port ${requestedPort} is unavailable (EADDRINUSE/EACCES). Cannot start server on the explicitly requested port.`);
-      }
-      const requestedPort = (args as any).port || 3000;
-      const newPort = findAvailablePort(requestedPort + 1);
-      console.warn(`⚠️  Port ${requestedPort} unavailable, using port ${newPort} instead`);
-      (args as any).port = newPort;
+  } catch (err) {
+    if (!unix && err.code === 'EADDRINUSE') {
+      args.port = findAvailablePort(3001);
       server = Bun.serve(args);
     } else {
       throw err;
@@ -930,27 +794,25 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
 export function findAvailablePort(startPort: number = 3001): number {
   for (let port = startPort; port < startPort + 100; port++) {
     try {
-      // Use Bun.serve to test — this is what we actually use, so it's the right probe.
-      // Bun.listen uses raw TCP which triggers EACCES on many Windows ports.
-      const testServer = Bun.serve({
+      const listener = Bun.listen({
         port,
-        fetch() { return new Response(''); },
+        hostname: 'localhost',
+        socket: {
+          close() {
+            // Close callback
+          },
+          data() {
+            // Data callback
+          },
+        },
       });
-      testServer.stop(true);
+      listener.stop();
       return port;
     } catch (e: any) {
-      if (
-        e.code !== 'EADDRINUSE' &&
-        e.code !== 'EACCES' &&
-        e.errno !== 10013 &&
-        !e.message?.includes('EADDRINUSE') &&
-        !e.message?.includes('EACCES') &&
-        !e.message?.includes('Failed to listen') &&
-        !e.message?.includes('Address already in use')
-      ) {
+      if (!e.message.includes('EADDRINUSE') && !e.message.includes('Address already in use')) {
         throw e;
       }
-      // Port not available, try next
+      // Continue to next port
     }
   }
   throw new Error(`No available port found in range ${startPort}-${startPort + 99}`);
@@ -1217,15 +1079,10 @@ interface AppRouterOptions {
  * ```
  */
 export function createAppRouter(options: AppRouterOptions = {}): Handler {
-  let {
+  const {
     appDir = path.join(process.cwd(), 'app'),
     defaultTitle = 'Melina App',
   } = options;
-
-  // Ensure appDir is absolute for dynamic imports to work
-  if (!path.isAbsolute(appDir)) {
-    appDir = path.resolve(process.cwd(), appDir);
-  }
 
   // Discover routes at startup
   const routes = discoverRoutes(appDir);
@@ -1287,60 +1144,33 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
       }
 
       // Handle Page routes
-      const pageModule = await importSSR(match.route.filePath);
+      const pageModule = await import(match.route.filePath);
       const PageComponent = pageModule.default || pageModule.Page;
 
       if (!PageComponent) {
         throw new Error(`No default export found in ${match.route.filePath}`);
       }
 
-      // Render page content — detect if component returns string or React element
-      let pageContent = PageComponent({ params: match.params });
-      if (pageContent instanceof Promise) pageContent = await pageContent;
-      const isStringMode = typeof pageContent === 'string';
+      // Import React for SSR (server-side only)
+      const React = await import('react');
+      const ReactDOMServer = await import('react-dom/server');
 
-      let html: string;
+      // Build the component tree with nested layouts
+      let tree = React.createElement(PageComponent, { params: match.params });
 
-      if (isStringMode) {
-        // ─── String mode: components return raw HTML strings ───
-        // Page content is already a string, wrap in #melina-page-content then layouts
-        let content = `<div id="melina-page-content" style="display:contents">${pageContent as string}</div>`;
-        for (let i = match.route.layouts.length - 1; i >= 0; i--) {
-          const layoutPath = match.route.layouts[i];
-          const layoutModule = await importSSR(layoutPath);
-          const LayoutComponent = layoutModule.default;
-          if (LayoutComponent) {
-            // Layout receives children as a string via props
-            let layoutResult = LayoutComponent({ children: content });
-            if (layoutResult instanceof Promise) layoutResult = await layoutResult;
-            if (typeof layoutResult === 'string') {
-              content = layoutResult;
-            }
-          }
+      // Wrap with layouts (innermost to outermost)
+      for (let i = match.route.layouts.length - 1; i >= 0; i--) {
+        const layoutPath = match.route.layouts[i];
+        const layoutModule = await import(layoutPath);
+        const LayoutComponent = layoutModule.default;
+
+        if (LayoutComponent) {
+          tree = React.createElement(LayoutComponent, { children: tree });
         }
-        html = content;
-      } else {
-        // ─── React mode: components return JSX elements ───
-        const React = await import('react');
-        const ReactDOMServer = await import('react-dom/server');
-
-        // Wrap page content in #melina-page-content for partial swap
-        let tree: any = React.createElement('div', { id: 'melina-page-content', style: { display: 'contents' } }, pageContent);
-
-        // Wrap with layouts (innermost to outermost)
-        for (let i = match.route.layouts.length - 1; i >= 0; i--) {
-          const layoutPath = match.route.layouts[i];
-          const layoutModule = await importSSR(layoutPath);
-          const LayoutComponent = layoutModule.default;
-
-          if (LayoutComponent) {
-            tree = React.createElement(LayoutComponent, null, tree);
-          }
-        }
-
-        // Render to HTML
-        html = ReactDOMServer.renderToString(tree);
       }
+
+      // Render to HTML
+      const html = ReactDOMServer.renderToString(tree);
 
       // Build CSS
       let stylesVirtualPath = '';
@@ -1352,60 +1182,54 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
         }
       }
 
-      // Build page's client.tsx if it exists
-      // Look for: page.client.tsx alongside page.tsx
-      const pageDir = path.dirname(match.route.filePath);
-      const clientCandidates = [
-        path.join(pageDir, 'page.client.tsx'),
-        path.join(pageDir, 'page.client.ts'),
-        path.join(pageDir, 'client.tsx'),
-        path.join(pageDir, 'client.ts'),
-      ];
+      // Build client mount scripts (page.client.tsx and layout.client.tsx)
+      // These are built with the jsx-dom plugin so JSX creates real DOM elements
+      // Each client script exports a default `mount()` function that returns a cleanup fn.
+      // We auto-invoke mount() and store cleanups for teardown on navigation.
+      const clientScriptUrls: { url: string; type: 'layout' | 'page' }[] = [];
 
-      let clientBundlePath = '';
-      for (const candidate of clientCandidates) {
-        if (existsSync(candidate)) {
-          try {
-            clientBundlePath = await buildClientScript(candidate);
-          } catch (e) {
-            console.warn(`Failed to build client script ${candidate}:`, e);
-          }
-          break;
-        }
-      }
-
-      // Build layout.client.tsx if it exists (persists across navigations)
-      // Check each layout directory for a layout.client.tsx
-      const layoutClientPaths: string[] = [];
+      // Build layout client scripts (persist across navigation)
       for (const layoutPath of match.route.layouts) {
-        const layoutDir = path.dirname(layoutPath);
-        const layoutClientCandidates = [
-          path.join(layoutDir, 'layout.client.tsx'),
-          path.join(layoutDir, 'layout.client.ts'),
-        ];
-        for (const candidate of layoutClientCandidates) {
-          if (existsSync(candidate)) {
-            try {
-              const bundlePath = await buildClientScript(candidate);
-              layoutClientPaths.push(bundlePath);
-            } catch (e) {
-              console.warn(`Failed to build layout client script ${candidate}:`, e);
-            }
-            break;
-          }
+        const layoutClientPath = layoutPath.replace(/\.tsx?$/, '.client.tsx');
+        if (existsSync(layoutClientPath)) {
+          const scriptPath = await buildClientScript(layoutClientPath);
+          clientScriptUrls.push({ url: scriptPath, type: 'layout' });
         }
       }
 
-      // Build the runtime (always included for navigation)
-      const runtimePath = await buildRuntime();
-
-      // Page meta for the runtime
-      const pageMeta: any = {};
-      if (clientBundlePath) {
-        pageMeta.client = clientBundlePath;
+      // Build page client script (mounts/unmounts on navigation)
+      const pageClientPath = match.route.filePath.replace(/\.tsx?$/, '.client.tsx');
+      if (existsSync(pageClientPath)) {
+        const scriptPath = await buildClientScript(pageClientPath);
+        clientScriptUrls.push({ url: scriptPath, type: 'page' });
       }
-      if (layoutClientPaths.length > 0) {
-        pageMeta.layoutClients = layoutClientPaths;
+
+      // Generate bootstrap script that imports and auto-invokes mount() from each module
+      const clientScriptTags: string[] = [];
+      if (clientScriptUrls.length > 0) {
+        const bootstrapLines = clientScriptUrls.map(({ url, type }) => {
+          return `  import('${url}').then(m => { if (typeof m.default === 'function') { const cleanup = m.default(); if (typeof cleanup === 'function') { window.__melinaCleanups__ = window.__melinaCleanups__ || []; window.__melinaCleanups__.push({ type: '${type}', cleanup }); } } }).catch(e => console.error('[Melina] Failed to mount ${type} script:', e));`;
+        });
+        clientScriptTags.push(
+          `<script type="module">\n${bootstrapLines.join('\n')}\n</script>`
+        );
+      }
+
+      // If any client scripts use React, inject import maps
+      const allClientPaths = [
+        ...match.route.layouts.map(l => l.replace(/\.tsx?$/, '.client.tsx')).filter(existsSync),
+        ...(existsSync(pageClientPath) ? [pageClientPath] : []),
+      ];
+      const needsReactImportMap = allClientPaths.some(p => clientScriptsUsingReact.has(p));
+
+      let importMapTag = '';
+      if (needsReactImportMap) {
+        try {
+          const importMapJson = JSON.stringify(await imports(['react-dom/client', 'react/jsx-dev-runtime']));
+          importMapTag = `<script type="importmap">${importMapJson}</script>`;
+        } catch (e) {
+          console.warn('Failed to generate React import maps:', e);
+        }
       }
 
       let fullHtml = `<!DOCTYPE html>${html}`;
@@ -1415,49 +1239,15 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
         fullHtml = fullHtml.replace('</head>', `<link rel="stylesheet" href="${stylesVirtualPath}"></head>`);
       }
 
-      // Inject import maps for React if any client scripts use it
-      const allClientPaths = [clientBundlePath, ...layoutClientPaths].filter(Boolean);
-      const needsReactImportMap = allClientPaths.some(p => clientScriptsUsingReact.has(p));
-      if (needsReactImportMap) {
-        try {
-          const importMapJson = JSON.stringify(await imports(['react-dom/client', 'react/jsx-dev-runtime']));
-          fullHtml = fullHtml.replace('</head>', `<script type="importmap">${importMapJson}</script></head>`);
-        } catch (e) {
-          console.warn('Failed to generate React import maps:', e);
-        }
+      // Inject import maps into <head> (must be before any module scripts)
+      if (importMapTag) {
+        fullHtml = fullHtml.replace('</head>', `${importMapTag}</head>`);
       }
 
-      // Inject scripts before </body>
-      let clientScriptTag = '';
-      if (clientBundlePath) {
-        clientScriptTag = `
-        <script type="module">
-          import mount from '${clientBundlePath}';
-          if (typeof mount === 'function') {
-            const cleanup = mount();
-            if (cleanup) window.__melinaPageCleanup = cleanup;
-          }
-        </script>`;
+      // Inject client scripts before </body>
+      if (clientScriptTags.length > 0) {
+        fullHtml = fullHtml.replace('</body>', `${clientScriptTags.join('\n')}</body>`);
       }
-
-      // Also inject layout client scripts
-      let layoutClientTags = '';
-      for (const lcPath of layoutClientPaths) {
-        layoutClientTags += `
-        <script type="module">
-          import mount from '${lcPath}';
-          if (typeof mount === 'function') mount();
-        </script>`;
-      }
-
-      const scripts = `
-        <script id="__MELINA_META__" type="application/json">${JSON.stringify(pageMeta)}</script>
-        <script src="${runtimePath}" type="module"></script>
-        ${clientScriptTag}
-        ${layoutClientTags}
-      `;
-
-      fullHtml = fullHtml.replace('</body>', `${scripts}</body>`);
 
       return new Response(fullHtml, {
         headers: {
@@ -1483,129 +1273,18 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
   };
 }
 
-// ============================================================================
-// PROGRAMMATIC API
-// Allows starting Melina from your own script instead of using CLI
-// ============================================================================
-
-export interface StartOptions {
-  /** Path to app directory (default: ./app) */
-  appDir?: string;
-  /** Port to listen on (default: 3000) */
-  port?: number;
-  /** Unix socket path (alternative to port) */
-  unix?: string;
-  /** Default page title */
-  defaultTitle?: string;
-  /** Path to global CSS file */
-  globalCss?: string;
-}
-
 /**
- * Start the Melina development server programmatically
- * 
- * This is the recommended way to use Melina in your own scripts,
- * giving you full control over the server lifecycle.
- * 
+ * Start a Melina server with file-based routing in one call.
+ * Combines createAppRouter() + serve() for convenience.
+ *
  * @example
  * ```ts
- * // server.ts
  * import { start } from 'melina';
- * 
- * // Basic usage
- * await start();
- * 
- * // With options
- * await start({
- *   appDir: './my-app',
- *   port: 8080,
- *   defaultTitle: 'My Awesome App',
- * });
- * ```
- * 
- * @example Custom middleware
- * ```ts
- * import { serve, createAppRouter } from 'melina';
- * 
- * const appRouter = createAppRouter({ appDir: './app' });
- * 
- * serve(async (req, measure) => {
- *   // Custom middleware logic
- *   console.log('Request:', req.url);
- *   
- *   // Add auth check, rate limiting, etc.
- *   if (req.url.includes('/admin') && !isAuthenticated(req)) {
- *     return new Response('Unauthorized', { status: 401 });
- *   }
- *   
- *   // Delegate to app router
- *   return appRouter(req, measure);
- * }, { port: 3000 });
+ * await start({ appDir: './app', port: 3000 });
  * ```
  */
-export async function start(options: StartOptions = {}): Promise<ReturnType<typeof Bun.serve>> {
-  let {
-    appDir = path.join(process.cwd(), 'app'),
-    port,
-    unix,
-    defaultTitle = 'Melina App',
-    globalCss,
-  } = options;
-
-  // Ensure appDir is absolute
-  if (!path.isAbsolute(appDir)) {
-    appDir = path.resolve(process.cwd(), appDir);
-  }
-
-  // Validate app directory exists
-  if (!existsSync(appDir)) {
-    console.error(`❌ Error: No "app" directory found at: ${appDir}`);
-    console.log(`\nCreate an app directory with pages:`);
-    console.log(`  ${appDir}/page.tsx          -> /`);
-    console.log(`  ${appDir}/about/page.tsx    -> /about`);
-    console.log(`  ${appDir}/blog/[id]/page.tsx -> /blog/:id`);
-    throw new Error(`App directory not found: ${appDir}`);
-  }
-
-  console.log('🦊 Starting Melina server...');
-
-  const router = createAppRouter({
-    appDir,
-    defaultTitle,
-    globalCss,
-  });
-
-  // Only pass port to serve() if explicitly provided by caller.
-  // Otherwise let serve() handle auto-detection (BUN_PORT env → default 3000 → fallback).
-  return serve(router, {
-    port: unix ? undefined : port,
-    unix,
-  });
-}
-
-/**
- * Create a Melina app instance for programmatic use
- * Returns the router handler that can be used with custom server logic
- * 
- * @example
- * ```ts
- * import { createApp, serve } from 'melina';
- * 
- * const app = createApp({ appDir: './app' });
- * 
- * // Use with custom server
- * Bun.serve({
- *   port: 3000,
- *   fetch: async (req) => {
- *     // Custom logic before Melina handles the request
- *     if (req.url.endsWith('/health')) {
- *       return new Response('OK');
- *     }
- *     return app(req, () => {});
- *   }
- * });
- * ```
- */
-export function createApp(options: AppRouterOptions = {}): Handler {
-  return createAppRouter(options);
+export async function start(options: AppRouterOptions & { port?: number; unix?: string } = {}) {
+  const { port, unix, ...routerOptions } = options;
+  const router = createAppRouter(routerOptions);
+  return serve(router, { port, unix });
 }

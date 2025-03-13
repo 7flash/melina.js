@@ -146,8 +146,8 @@ export default function mount(): () => void {
         if ((e.target as Element).closest('.post-actions')) return;
 
         const postId = article.dataset.postId;
-        if (postId && (window as any).melinaNavigate) {
-            (window as any).melinaNavigate(`/post/${postId}`);
+        if (postId) {
+            window.location.href = `/post/${postId}`;
         }
     }
 

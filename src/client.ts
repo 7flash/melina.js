@@ -1,22 +1,18 @@
 /**
  * melina/client — Lightweight Client-Side Renderer
  * 
- * A purpose-built alternative to React focused on the reverse portals
- * architecture. Components are rendered off-DOM in a "hangar" and
- * portaled into island placeholders during navigation.
+ * A zero-dependency alternative to React for client-side interactivity.
+ * JSX compiles directly to real DOM elements — no virtual DOM diffing,
+ * no hydration ceremony.
  * 
  * Key concepts:
  * - VNode: Lightweight virtual DOM node
- * - Hangar: Off-DOM container that survives body replacement
- * - Island: Component instance that persists across navigations
- * - Link: Navigation component that triggers body swap + island remount
+ * - Hooks: React-compatible useState, useEffect, useRef, useMemo, useCallback
+ * - Link: Navigation component with View Transitions support
+ * - renderToString: SSR support for server components
  * 
  * Usage:
  * ```tsx
- * // tsconfig.json or bunfig.toml
- * // jsxImportSource: "melina/client"
- * 
- * 'use client';
  * import { useState } from 'melina/client';
  * 
  * export function Counter({ initial = 0 }) {
@@ -596,18 +592,6 @@ type HookState =
 let currentFiber: Fiber | null = null;
 let pendingEffects: (() => void)[] = [];
 
-// Island registry - persists across navigations
-const islandRegistry = new Map<string, {
-    name: string;
-    Component: Component<any>;
-    props: Props;
-    fiber: Fiber;
-    storageNode: HTMLElement;
-}>();
-
-// Component cache for lazy loading
-const componentCache = new Map<string, Component<any>>();
-
 // =============================================================================
 // VNODE CREATION (JSX Runtime)
 // =============================================================================
@@ -683,114 +667,6 @@ export function jsxDEV(
     };
 }
 
-// =============================================================================
-// SERVER-SIDE RENDERING
-// =============================================================================
-
-/**
- * Render a VNode tree to an HTML string (SSR)
- * This is the React-free equivalent of ReactDOMServer.renderToString()
- */
-export function renderToString(vnode: VNode | string | number | boolean | null | undefined): string {
-    if (vnode == null || typeof vnode === 'boolean') {
-        return '';
-    }
-
-    if (typeof vnode === 'string') {
-        return escapeHtml(vnode);
-    }
-
-    if (typeof vnode === 'number') {
-        return String(vnode);
-    }
-
-    const { type, props } = vnode;
-
-    // Handle Fragment
-    if (type === Fragment) {
-        return renderChildren(props.children);
-    }
-
-    // Handle function components
-    if (typeof type === 'function') {
-        const result = type(props);
-        return renderToString(result);
-    }
-
-    // Handle HTML elements
-    const tagName = type as string;
-    const attrs = renderAttributes(props);
-    const children = renderChildren(props.children);
-
-    // Void elements (self-closing)
-    const voidElements = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'];
-    if (voidElements.includes(tagName)) {
-        return `<${tagName}${attrs}>`;
-    }
-
-    return `<${tagName}${attrs}>${children}</${tagName}>`;
-}
-
-function escapeHtml(str: string): string {
-    return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
-function renderAttributes(props: Props): string {
-    const attrs: string[] = [];
-
-    for (const [key, value] of Object.entries(props)) {
-        if (key === 'children' || key === 'key' || key === 'ref') continue;
-        if (value == null || value === false) continue;
-
-        // Handle className -> class
-        const attrName = key === 'className' ? 'class' : key;
-
-        // Handle style object
-        if (key === 'style' && typeof value === 'object') {
-            const styleStr = Object.entries(value)
-                .map(([k, v]) => `${k.replace(/([A-Z])/g, '-$1').toLowerCase()}:${v}`)
-                .join(';');
-            attrs.push(`style="${escapeHtml(styleStr)}"`);
-            continue;
-        }
-
-        // Handle event handlers (skip on server)
-        if (key.startsWith('on') && typeof value === 'function') continue;
-
-        // Handle dangerouslySetInnerHTML (handled in children)
-        if (key === 'dangerouslySetInnerHTML') continue;
-
-        // Boolean attributes
-        if (value === true) {
-            attrs.push(attrName);
-            continue;
-        }
-
-        attrs.push(`${attrName}="${escapeHtml(String(value))}"`);
-    }
-
-    return attrs.length > 0 ? ' ' + attrs.join(' ') : '';
-}
-
-function renderChildren(children: Child | Child[] | undefined): string {
-    if (children == null) return '';
-
-    // Handle dangerouslySetInnerHTML
-    if (typeof children === 'object' && '__html' in (children as any)) {
-        return (children as any).__html;
-    }
-
-    if (Array.isArray(children)) {
-        return children.map(child => renderToString(child as VNode)).join('');
-    }
-
-    return renderToString(children as VNode);
-}
 
 // =============================================================================
 // HOOKS
@@ -1281,159 +1157,6 @@ function renderChildrenToString(children: Child | Child[] | undefined): string {
 }
 
 // =============================================================================
-// ISLAND SYSTEM (HANGAR ARCHITECTURE)
-// =============================================================================
-
-let hangarRoot: HTMLElement | null = null;
-let holdingPen: HTMLElement | null = null;
-
-/**
- * Initialize the Hangar - off-DOM container for islands
- */
-function initHangar(): void {
-    if (hangarRoot) return;
-
-    // Create hangar OUTSIDE body (survives body.innerHTML replacement)
-    hangarRoot = document.createElement('div');
-    hangarRoot.id = 'melina-hangar';
-    hangarRoot.style.display = 'contents';
-    document.documentElement.appendChild(hangarRoot);
-
-    // Holding pen for islands during navigation
-    holdingPen = document.createElement('div');
-    holdingPen.id = 'melina-holding-pen';
-    holdingPen.style.display = 'none';
-    hangarRoot.appendChild(holdingPen);
-
-    console.log('[Melina Client] Hangar initialized');
-}
-
-/**
- * Get island metadata from page
- */
-function getIslandMeta(): Record<string, string> {
-    const metaEl = document.getElementById('__MELINA_META__');
-    if (!metaEl) return {};
-    try {
-        return JSON.parse(metaEl.textContent || '{}');
-    } catch {
-        return {};
-    }
-}
-
-/**
- * Load component module
- */
-async function loadComponent(name: string): Promise<Component<any> | null> {
-    if (componentCache.has(name)) return componentCache.get(name)!;
-
-    const meta = getIslandMeta();
-    const url = meta[name];
-    if (!url) return null;
-
-    try {
-        const module = await import(/* @vite-ignore */ url);
-        const Component = module[name] || module.default;
-        componentCache.set(name, Component);
-        return Component;
-    } catch (e) {
-        console.error('[Melina Client] Failed to load component:', name, e);
-        return null;
-    }
-}
-
-/**
- * Hydrate all islands in the current DOM
- * Uses melina/client's render function (React-free!)
- */
-export async function hydrateIslands(): Promise<void> {
-    initHangar();
-
-    const placeholders = document.querySelectorAll('[data-melina-island]');
-    const seenIds = new Set<string>();
-
-    for (let i = 0; i < placeholders.length; i++) {
-        const el = placeholders[i] as HTMLElement;
-        const name = el.getAttribute('data-melina-island');
-        if (!name) continue;
-
-        const propsStr = (el.getAttribute('data-props') || '{}').replace(/&quot;/g, '"');
-        const props = JSON.parse(propsStr);
-        const instanceId = el.getAttribute('data-instance') || `${name}-${i}`;
-
-        seenIds.add(instanceId);
-
-        const existing = islandRegistry.get(instanceId);
-
-        if (existing) {
-            // Move existing storage node to new placeholder
-            existing.props = props;
-            el.appendChild(existing.storageNode);
-            console.log('[Melina Client] Moved island:', instanceId);
-        } else {
-            // Load component and create new island
-            const Component = await loadComponent(name);
-            if (Component) {
-                // Create storage node (the "lifeboat")
-                const storageNode = document.createElement('div');
-                storageNode.style.display = 'contents';
-                storageNode.setAttribute('data-storage', instanceId);
-                el.appendChild(storageNode);
-
-                // Render component using melina's render function (React-free!)
-                const vnode = createElement(Component as any, props);
-                render(vnode, storageNode);
-
-                islandRegistry.set(instanceId, {
-                    name,
-                    Component,
-                    props,
-                    fiber: null as any,
-                    storageNode,
-                });
-
-                console.log('[Melina Client] Hydrated island:', instanceId);
-            }
-        }
-    }
-
-    // Garbage collect islands no longer in DOM
-    for (const [id, island] of islandRegistry.entries()) {
-        if (!seenIds.has(id)) {
-            // Move to holding pen (could be needed on back-nav)
-            if (holdingPen) {
-                holdingPen.appendChild(island.storageNode);
-            }
-            // Could optionally delete after timeout
-            console.log('[Melina Client] Parked island:', id);
-        }
-    }
-}
-
-/**
- * Sync islands after body swap (synchronous for View Transitions)
- */
-export function syncIslands(): void {
-    const placeholders = document.querySelectorAll('[data-melina-island]');
-
-    for (let i = 0; i < placeholders.length; i++) {
-        const el = placeholders[i] as HTMLElement;
-        const name = el.getAttribute('data-melina-island');
-        if (!name) continue;
-
-        const instanceId = el.getAttribute('data-instance') || `${name}-${i}`;
-        const existing = islandRegistry.get(instanceId);
-
-        if (existing) {
-            // Update props and move storage node
-            const propsStr = (el.getAttribute('data-props') || '{}').replace(/&quot;/g, '"');
-            existing.props = JSON.parse(propsStr);
-            el.appendChild(existing.storageNode);
-        }
-    }
-}
-
-// =============================================================================
 // NAVIGATION
 // =============================================================================
 
@@ -1446,8 +1169,6 @@ export async function navigate(href: string): Promise<void> {
 
     if (fromPath === toPath) return;
 
-    console.log('[Melina Client] Navigate:', fromPath, '->', toPath);
-
     // Fetch new page
     let newDoc: Document;
     try {
@@ -1455,7 +1176,6 @@ export async function navigate(href: string): Promise<void> {
         const html = await response.text();
         newDoc = new DOMParser().parseFromString(html, 'text/html');
     } catch (error) {
-        console.error('[Melina Client] Fetch failed, falling back to hard nav');
         window.location.href = href;
         return;
     }
@@ -1465,47 +1185,20 @@ export async function navigate(href: string): Promise<void> {
 
     // DOM update function - optimized with DocumentFragment for minimal reflow
     const performUpdate = () => {
-        // Dispatch navigation event (for island state updates)
         window.dispatchEvent(new CustomEvent('melina:navigation-start', {
             detail: { from: fromPath, to: toPath }
         }));
 
         document.title = newDoc.title;
 
-        // OPTIMIZATION: Build new body off-screen using DocumentFragment
-        // This minimizes layout thrashing by preparing everything before touching DOM
-
-        // 1. Create a DocumentFragment with all new children
+        // Build new body off-screen using DocumentFragment
         const fragment = document.createDocumentFragment();
-
-        // 2. Move all children from newDoc.body to fragment (off-screen)
         while (newDoc.body.firstChild) {
             fragment.appendChild(newDoc.body.firstChild);
         }
 
-        // 3. Find island placeholders in the fragment and pre-insert storage nodes
-        //    This happens OFF-SCREEN, no reflow triggered
-        const placeholders = fragment.querySelectorAll('[data-melina-island]');
-        for (let i = 0; i < placeholders.length; i++) {
-            const el = placeholders[i] as HTMLElement;
-            const name = el.getAttribute('data-melina-island');
-            if (!name) continue;
-
-            const instanceId = el.getAttribute('data-instance') || `${name}-${i}`;
-            const existing = islandRegistry.get(instanceId);
-
-            if (existing) {
-                // Pre-insert storage node into fragment (still off-screen)
-                const propsStr = (el.getAttribute('data-props') || '{}').replace(/&quot;/g, '"');
-                existing.props = JSON.parse(propsStr);
-                el.appendChild(existing.storageNode);
-            }
-        }
-
-        // 4. SINGLE REFLOW: Clear body and append prepared fragment
-        //    All island storage nodes are already in place
+        // Single reflow: swap prepared fragment
         document.body.replaceChildren(fragment);
-
         window.scrollTo(0, 0);
     };
 
@@ -1516,11 +1209,6 @@ export async function navigate(href: string): Promise<void> {
     } else {
         performUpdate();
     }
-
-    // Hydrate new islands (ones that weren't in registry)
-    await hydrateIslands();
-
-    console.log('[Melina Client] Navigation complete');
 }
 
 // Expose globally
@@ -1540,58 +1228,26 @@ export interface LinkProps extends Props {
 }
 
 /**
- * Link component - handles client-side navigation
+ * Link component - handles client-side navigation with View Transitions
  */
 export function Link(props: LinkProps): VNode {
     const { href, children, ...rest } = props;
 
     const handleClick = (e: MouseEvent) => {
-        // Allow modifier keys for new tab, etc
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-
         e.preventDefault();
         navigate(href);
     };
 
-    // Normalize children to array for createElement spread
     const childArray = Array.isArray(children) ? children : (children !== undefined ? [children] : []);
     return createElement('a', { href, onClick: handleClick, ...rest }, ...childArray);
 }
 
 // =============================================================================
-// SSR SUPPORT
+// INITIALIZATION
 // =============================================================================
 
 const isServer = typeof window === 'undefined';
-
-/**
- * Island wrapper for SSR
- * On server: renders placeholder div
- * On client: renders actual component
- */
-export function island<P extends Props>(
-    Component: Component<P>,
-    name: string
-): Component<P> {
-    return function IslandWrapper(props: P): VNode {
-        if (isServer) {
-            // Server: render placeholder
-            const propsJson = JSON.stringify(props).replace(/"/g, '&quot;');
-            return createElement('div', {
-                'data-melina-island': name,
-                'data-props': propsJson,
-                style: { display: 'contents' },
-            });
-        }
-
-        // Client: render component
-        return createElement(Component, props);
-    };
-}
-
-// =============================================================================
-// INITIALIZATION
-// =============================================================================
 
 /**
  * Initialize the Melina client runtime
@@ -1599,9 +1255,7 @@ export function island<P extends Props>(
 export async function init(): Promise<void> {
     if (isServer) return;
 
-    initHangar();
-
-    // Intercept link clicks
+    // Intercept link clicks for SPA navigation
     document.addEventListener('click', (e: MouseEvent) => {
         if (e.defaultPrevented) return;
 
@@ -1636,30 +1290,11 @@ export async function init(): Promise<void> {
 
             document.title = newDoc.title;
 
-            // OPTIMIZATION: Build off-screen with DocumentFragment
             const fragment = document.createDocumentFragment();
             while (newDoc.body.firstChild) {
                 fragment.appendChild(newDoc.body.firstChild);
             }
 
-            // Pre-insert islands into fragment (off-screen)
-            const placeholders = fragment.querySelectorAll('[data-melina-island]');
-            for (let i = 0; i < placeholders.length; i++) {
-                const el = placeholders[i] as HTMLElement;
-                const name = el.getAttribute('data-melina-island');
-                if (!name) continue;
-
-                const instanceId = el.getAttribute('data-instance') || `${name}-${i}`;
-                const existing = islandRegistry.get(instanceId);
-
-                if (existing) {
-                    const propsStr = (el.getAttribute('data-props') || '{}').replace(/&quot;/g, '"');
-                    existing.props = JSON.parse(propsStr);
-                    el.appendChild(existing.storageNode);
-                }
-            }
-
-            // Single reflow: swap prepared fragment
             document.body.replaceChildren(fragment);
         };
 
@@ -1668,14 +1303,7 @@ export async function init(): Promise<void> {
         } else {
             await performUpdate();
         }
-
-        await hydrateIslands();
     });
-
-    // Initial hydration
-    await hydrateIslands();
-
-    console.log('[Melina Client] Runtime initialized');
 }
 
 // Auto-init when DOM ready
@@ -1693,8 +1321,6 @@ if (typeof window !== 'undefined') {
 
 export {
     createElement as h,
-    islandRegistry,
-    componentCache,
 };
 
 // Default export for JSX pragma

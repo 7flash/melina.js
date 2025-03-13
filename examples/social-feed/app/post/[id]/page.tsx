@@ -17,16 +17,16 @@ function getPost(id: number) {
     ];
 
     const contents = [
-        "Just deployed my first Melina.js app and the islands architecture is 🔥. Zero JS on initial load, instant hydration!",
-        "The future of web frameworks is server-first with surgical hydration. Been experimenting with reverse portals and it's mind-blowing.",
+        "Just deployed my first Melina.js app and the server-side rendering is 🔥. Zero JS on initial load, instant interactivity!",
+        "The future of web frameworks is server-first with client mount scripts. Been experimenting with View Transitions and it's mind-blowing.",
         "Hot take: SPAs were a mistake. Give me streaming HTML with progressive enhancement any day.",
         "Finally figured out View Transitions API. The UX improvement is insane — feels like a native app.",
-        "Building a real-time dashboard with islands. Each widget hydrates independently. Performance is incredible.",
-        "TIL you can have stateful components that survive full page navigations. The hangar architecture is genius.",
+        "Building a real-time dashboard with SSR. Each page renders instantly. Performance is incredible.",
+        "TIL you can have smooth page transitions without a SPA framework. View Transitions API is genius.",
         "Spent the weekend rewriting our app from Next.js to Melina. 85% less client JS. Users are happy.",
         "Unpopular opinion: Most apps don't need client-side routing. MPA with View Transitions > SPA.",
-        "The best part about islands architecture? You can use whatever you want for each island. React, Svelte, vanilla JS...",
-        "Just discovered you can physically move DOM nodes between placeholders during navigation. State persists! 🤯",
+        "The best part about server-first rendering? Your pages work without JavaScript. Progressive enhancement FTW.",
+        "Just discovered you can add interactivity with mount scripts instead of hydrating the whole page. So clean! 🤯",
     ];
 
     const author = authors[id % authors.length];

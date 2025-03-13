@@ -10,8 +10,8 @@ export interface LinkProps {
 /**
  * Link Component
  * 
- * Uses the Hangar runtime's navigation function (window.melinaNavigate)
- * for proper View Transitions and island state preservation.
+ * Client-side navigation with View Transitions support.
+ * Uses window.melinaNavigate for SPA-style page transitions.
  */
 export function Link({ href, children, className, style }: LinkProps) {
     const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
@@ -26,12 +26,9 @@ export function Link({ href, children, className, style }: LinkProps) {
 
         e.preventDefault();
 
-        // Use Hangar runtime's navigation function
         if (typeof (window as any).melinaNavigate === 'function') {
             (window as any).melinaNavigate(href);
         } else {
-            // Fallback to regular navigation if runtime not loaded
-            console.warn('[Link] melinaNavigate not available, using direct navigation');
             window.location.href = href;
         }
     };
@@ -62,4 +59,3 @@ export const clientNavigate = (href: string) => {
         window.location.href = href;
     }
 };
-

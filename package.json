@@ -1,7 +1,7 @@
 {
   "name": "melina",
-  "version": "1.3.2",
-  "description": "A lightweight, islands-architecture web framework for Bun with Next.js-style routing.",
+  "version": "2.0.0",
+  "description": "A lightweight web framework for Bun with Next.js-style routing and zero-config builds.",
   "module": "./src/web.ts",
   "main": "./src/web.ts",
   "bin": {
@@ -10,23 +10,25 @@
   "files": [
     "src",
     "bin",
+    "docs",
+    "GUIDE.md",
     "README.md"
   ],
   "exports": {
     ".": "./src/web.ts",
     "./web": "./src/web.ts",
     "./Link": "./src/Link.tsx",
-    "./island": "./src/island.ts"
+    "./utils": "./src/utils.ts"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/mements/melina.js"
+    "url": "https://github.com/nicholasgriffintn/melina.js"
   },
   "author": {
-    "name": "Mements Team"
+    "name": "Melina.js Contributors"
   },
-  "bugs": "https://github.com/mements/melina.js/issues",
-  "homepage": "https://github.com/mements/melina.js#readme",
+  "bugs": "https://github.com/nicholasgriffintn/melina.js/issues",
+  "homepage": "https://github.com/nicholasgriffintn/melina.js#readme",
   "license": "MIT",
   "keywords": [
     "bun",
@@ -35,13 +37,12 @@
     "typescript",
     "web",
     "ssr",
-    "islands",
-    "islands-architecture",
-    "hydration",
+    "jsx",
     "nextjs",
     "app-router",
     "react",
-    "partial-hydration"
+    "view-transitions",
+    "melina"
   ],
   "type": "module",
   "private": false,
@@ -52,7 +53,6 @@
     "@types/react-dom": "^19.2.3"
   },
   "dependencies": {
-    "@ments/utils": "^1.2.1",
     "@modelcontextprotocol/sdk": "^1.11.0",
     "@solana/kit": "^2.1.0",
     "@tailwindcss/postcss": "^4.1.10",

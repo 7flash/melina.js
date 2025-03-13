@@ -30,7 +30,7 @@ const messageTemplates = [
     "Need help with something",
     "🚀🚀🚀",
     "This is so smooth!",
-    "The islands architecture is genius",
+    "The server-first approach is genius",
     "Shipped the fix!",
     "Looking good!",
     "Almost done with the PR",

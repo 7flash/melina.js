@@ -35,7 +35,9 @@ export interface RouteMatch {
  */
 function filePathToPattern(filePath: string, appDir: string): { pattern: string; paramNames: string[] } {
     // Remove appDir prefix and page.tsx/page.ts suffix
-    let relativePath = path.relative(appDir, filePath).split(path.sep).join('/');
+    let relativePath = path.relative(appDir, filePath);
+    // Normalize Windows backslashes to forward slashes
+    relativePath = relativePath.replace(/\\/g, '/');
     // Remove page.tsx/page.ts or route.ts suffix
     relativePath = relativePath.replace(/(^|\/)(page|route)\.(tsx?|jsx?)$/, '');
 
