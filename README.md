@@ -1,195 +1,237 @@
-# Melina.js
+# Melina.js 🦊
 
-A lightweight, streaming-first web framework for Bun that delivers blazing fast user experiences with zero configuration.
+**A high-performance, islands-architecture web framework for Bun**
 
-[![npm version](https://img.shields.io/npm/v/melinajs.svg)](https://www.npmjs.com/package/melinajs)
-[![bun](https://img.shields.io/badge/powered%20by-bun-F7A41D)](https://bun.sh/)
+[![npm version](https://img.shields.io/npm/v/melina)](https://www.npmjs.com/package/melina)
+[![Bun](https://img.shields.io/badge/runtime-Bun-f9f1e1)](https://bun.sh)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## Features
+Melina.js is a Next.js-compatible framework with a radically simpler architecture. Built specifically for Bun, it eliminates the need for external bundlers by leveraging Bun's native build APIs.
 
-- **Simplified Setup** - Define a server handler and start building.
-- **Streaming by Default** - Return AsyncGenerators from your handler for immediate Time to First Contentful Paint.
-- **Dynamic Import Maps** - Generate modern ES module import maps from your `package.json` on the fly.
-- **On-Demand Asset Building** - Client-side JavaScript and CSS are built when requested during development, and cached in production.
-- **Framework Agnostic** - Works with React, Vue, Svelte, or vanilla JS on the client-side.
-- **Built-in Performance Measurement** - Debug and optimize with ease using the `measure` utility.
-- **Tailwind CSS JIT** - Seamless Tailwind CSS integration for your assets.
-- **MCP Server** - MCP (Model Context Protocol)
+## ✨ Features
 
-## Installation
+- 🏝️ **Islands Architecture** — Only hydrate what needs to be interactive
+- 📁 **File-based Routing** — Next.js App Router style (`app/page.tsx` → `/`)
+- ⚡ **In-Memory Builds** — No `dist/` folder, assets built and served from RAM
+- 🔄 **High-Fidelity Navigation** — SPA-like experience with state preservation
+- 🎬 **View Transitions** — Smooth morphing animations between pages
+- 🎨 **Tailwind CSS v4** — Built-in support for CSS-first configuration
+- 🌐 **Import Maps** — Browser-native module resolution, no vendor bundles
+
+## 🚀 Quick Start
+
+### 1. Initialize a New Project
+
+The fastest way to get started is using the CLI:
 
 ```bash
-bun add melinajs
+# Create a new project
+bunx melina init my-app
+cd my-app
+bun install
+
+# Start the development server
+bunx melina start
 ```
 
-## Examples
+### 2. Manual Setup
 
-The following examples demonstrate the core features of Melina.js.
+If you prefer to set it up manually in an existing Bun project:
 
-### Streaming Examples
-
-These examples show how to stream HTML content to the browser.
-
-- **`examples/stream-vanilla`**: A basic example that streams the current time every second.
-- **`examples/stream-react-tailwind`**: A more complex example that demonstrates how to stream a React application with Tailwind CSS, including data fetching and loading states.
-
-### Wrapped Examples
-
-These examples show how to use the "wrapped" API, which simplifies the process of building a frontend application.
-
-- **`examples/wrapped-vanilla`**: A simple example of a vanilla JavaScript application built with the wrapped API.
-- **`examples/wrapped-react`**: A simple example of a React application with Tailwind CSS built with the wrapped API.
-
-### Quick Start
-
-- **[MCP Example](./examples/mcp/server.ts)**
-- **[Web Example (Vanilla JS)](./examples/wrapped-vanilla/index.ts)**
-- **[Web Example (React with Tailwind CSS)](./examples/wrapped-react/index.ts)**
-
-## How It Works (Web)
-
-Melina.js simplifies web application delivery with a handler-centric approach:
-
-1.  **Request Handling**: When a request comes in, it's routed to the main handler function you provide to `serve()`.
-2.  **Server-Side Logic**: Your handler processes the request. You can implement routing, API endpoints, or page generation logic.
-3.  **Streaming HTML**: For HTML pages, your handler can return an `AsyncGenerator<string>`. Melina immediately starts streaming the first chunk of HTML to the browser. This allows the browser to start parsing and rendering content without waiting for all server-side processing to complete.
-4.  **Asset Serving**:
-    - You use the `asset(filePath)` function within your server-side rendering logic (e.g., inside your streaming generator) to get a URL for a client-side JavaScript or CSS file.
-    - **Development**: When a request for an asset URL comes, Melina (via Bun) builds that specific asset on-the-fly (e.g., transpiling TSX, processing CSS with Tailwind).
-    - **Production**: Assets are built once and served with long-cache headers (hashed filenames ensure cache-busting).
-5.  **Import Map Injection**: You can use the `imports([...dependencies])` function to generate an import map from your project's `package.json`. This import map is then manually injected into your HTML stream, allowing you to use bare module specifiers for your client-side ES modules (e.g., `import React from 'react'`).
-6.  **Data Injection**: Server-side data can be injected into the HTML stream by embedding a `<script>` tag that assigns data to a global variable (e.g., `window.SERVER_DATA`). The client-side code can then pick this up.
-
-This approach significantly improves perceived performance by prioritizing Time to First Contentful Paint (TTFCP) and enabling progressive rendering.
-
-### API
-
-```typescript
-import { serve, asset, imports } from "melinajs/web";
+```bash
+bun add melina react react-dom
 ```
 
-- **`serve(handler: (req: Request) => Response | AsyncGenerator<string> | Promise<...>)`**:
-  Starts the Bun server with your main request handler.
-  The handler receives the standard `Request` object and can return:
+Create your entry point structure:
 
-  - A `Response` object (e.g., `Response.json(...)`, `new Response(...)`).
-  - An `AsyncGenerator<string>` for streaming HTML content.
-  - A string (will be returned as `text/html`).
-  - A plain object (will be returned as `application/json`).
-  - A Promise that resolves to any of the above.
+```bash
+mkdir -p app/components
+```
 
-- **`asset(filePath: string): Promise<string>`**:
-  Takes a path to a client-side asset (e.g., `./App.client.tsx`, `./styles.css`).
-  Returns a `Promise<string>` that resolves to a fingerprinted URL path (e.g., `/App.client-X1Y2Z3.js`) for that asset.
-  In development, the asset is built on first request. In production, it's built once.
-  Supports TypeScript/TSX, JavaScript, and CSS (with Tailwind JIT via `bun-plugin-tailwind` if `App.css` uses `@import "tailwindcss"`).
+**`app/layout.tsx`** (Required)
+```tsx
+export default function Layout({ children }) {
+  return (
+    <html>
+      <body>
+        <main id="melina-page-content">{children}</main>
+      </body>
+    </html>
+  );
+}
+```
 
-- **`imports(subpaths?: string[], pkgJson?: any, lockFile?: any): Promise<ImportMap>`**:
-  Generates an import map object.
+**`app/page.tsx`**
+```tsx
+export default function Home() {
+  return <h1>Hello Melina! 🦊</h1>;
+}
+```
 
-  - `subpaths` (optional): An array of module subpaths to include (e.g., `['react-dom/client']`). Base packages from `dependencies` in `package.json` are included by default.
-  - `pkgJson` (optional): Pass a pre-loaded `package.json` object. Defaults to loading `./package.json`.
-  - `lockFile` (optional): Pass a pre-loaded `bun.lockb` (parsed as JSON) object. Defaults to loading `./bun.lockb`.
-    It uses `esm.sh` as the CDN for ES modules and correctly resolves versions and peer dependencies based on your `package.json` and `bun.lockb`.
+## 📦 Core Exports
 
-## API Routes
+Melina exposes its core APIs through clean entry points:
 
-```typescript
+```tsx
+// Navigation
+import { Link } from 'melina/Link';
+
+// Programmatic server start
+import { start, createApp, serve, createAppRouter } from 'melina';
+
+// Manual island wrapper (optional - auto-wrapping is enabled by default)
+import { island } from 'melina/island';
+```
+
+## 🧩 Examples
+
+The repository includes several high-quality examples to demonstrate core capabilities.
+
+### 🎵 View Morph Demo (`examples/view-morph`)
+
+A specialized demo showcasing the **Hangar Architecture** and **View Transitions**.
+
+- **Feature**: Smoothly morphs a music player from a mini-widget (on home) to a full-screen immersive player (on specialized routes).
+- **Tech**: Uses **Persistent Portals**. The `MusicPlayer` island is defined on multiple pages, but the runtime intelligent detects identical identity, preventing unmounting. It surgicaly "moves" the living React instance to the new DOM position, preserving state (audio playback, progress) while the View Transition API handles the visual morph.
+
+To run it:
+```bash
+cd examples/view-morph
+bun install
+bun run dev
+```
+
+### 🏝️ App Router Demo (`examples/app-router`)
+
+A comprehensive showcase of the file-based routing system, including:
+- Nested Layouts
+- API Routes
+- Dynamic Segments
+- Server Actions pattern (via traditional API routes)
+
+## 🏝️ Creating Islands (Client Components)
+
+Islands are interactive components that hydrate on the client while the rest of your page stays as static HTML.
+
+**With auto-wrapping (recommended)** — Just add `'use client'` and export normally:
+
+```tsx
+// app/components/Counter.tsx
+'use client';
+
+import { useState } from 'react';
+
+export function Counter({ initialCount = 0 }) {
+  const [count, setCount] = useState(initialCount);
+  return (
+    <button onClick={() => setCount(c => c + 1)}>
+      Count: {count}
+    </button>
+  );
+}
+```
+
+Melina automatically transforms this to an island during SSR — no manual wrapping needed!
+
+**Manual wrapping** (for advanced control):
+
+```tsx
+import { island } from 'melina/island';
+
+function CounterImpl({ initialCount = 0 }) { /* ... */ }
+export const Counter = island(CounterImpl, 'Counter');
+
+## 🔄 State Preservation
+
+Melina offers multiple tiers of state persistence:
+
+1.  **Layout Persistence**: Islands placed in `layout.tsx` (outside `#melina-page-content`) are never unmounted.
+2.  **Identity Re-targeting**: Islands with the same name/props on different pages are "transported" to the new position without remounting.
+
+## 🎬 View Transitions
+
+Enable smooth morphing animations between pages using the native View Transitions API. Melina automatically suspends rendering until the new DOM is ready, ensuring a glitch-free transition.
+
+```css
+/* Shared transition identity */
+.album-cover {
+  view-transition-name: album-cover;
+}
+```
+
+## 📖 Documentation
+
+- **[Developer Guide](./GUIDE.md)** — Core concepts, best practices, API reference
+- **[Architecture Deep Dive](./docs/ARCHITECTURE.md)** — Technical internals and design philosophy
+
+## 🔧 CLI
+
+```bash
+melina init <name>  # Create new project
+melina start        # Start dev server (default port: 3000)
+```
+
+## 🖥️ Programmatic API
+
+Start Melina from your own script instead of using the CLI:
+
+```ts
 // server.ts
-serve(async (req: Request) => {
-  const url = new URL(req.url);
+import { start } from 'melina';
 
-  if (url.pathname === '/api/users' && req.method === 'GET') {
-    // Handle GET /api/users
-    const users = [{ id: 1, name: "Ada" }, { id: 2, name: "Grace" }];
-    return Response.json({ users });
-  }
+// Basic usage
+await start();
 
-  if (url.pathname.startsWith('/api/users/') && req.method === 'POST') {
-    // Handle POST /api/users/:id
-    const body = await req.json();
-    return Response.json({ message: "User created/updated", data: body }, { status: 201 });
-  }
-
-  // ... your HTML page routes
-  if (url.pathname === '/') {
-    // return streamMyPage();
-  }
-
-  return new Response("Not Found", { status: 404 });
+// With options
+await start({
+  appDir: './app',
+  port: 8080,
+  defaultTitle: 'My App',
 });
 ```
 
-## Import Maps Generation
+**Custom middleware example:**
 
-Melina uses [Import Maps](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script/type/importmap) to manage client-side dependencies using modern ES modules without complex bundling for third-party libraries.
+```ts
+import { serve, createAppRouter } from 'melina';
 
-The `imports()` function, obtained from `useServer()`, automates this:
+const app = createAppRouter({ appDir: './app' });
 
-```typescript
-import { useServer } from "melinajs";
-// import packageJson from "./package.json"; // Optional: if you want to pass it explicitly
-
-const { imports } = useServer();
-
-// Example: Generate import map including react, react-dom/client, and others from package.json
-const importMapObject = await imports(
-  ['react', 'react-dom/client'] // Specify exact subpaths if needed
-  // packageJson // Optionally pass your package.json object
-);
-
-// importMapObject will look like:
-// {
-//   "imports": {
-//     "react": "https://esm.sh/react@18.2.0?dev",
-//     "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?dev",
-//     // ... other dependencies from your package.json
-//   }
-// }
-
-// Then, in your HTML streaming function:
-// yield `<script type="importmap">${JSON.stringify(importMapObject, null, 2)}</script>`;
+serve(async (req, measure) => {
+  // Add logging, auth, rate limiting, etc.
+  console.log('Request:', req.url);
+  
+  if (req.url.includes('/admin') && !isAuthenticated(req)) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+  
+  return app(req, measure);
+}, { port: 3000 });
 ```
 
-This automatically:
+Run with: `bun run server.ts`
 
-- Extracts versions from your `package.json` (and `bun.lockb` for transitive/peer dependency resolution).
-- Configures CDN URLs (using `esm.sh` by default).
-- Handles peer dependencies correctly.
-- Appends `?dev` to CDN URLs in development for better debugging.
+## 🤔 Why Melina?
 
-## FAQs
+| Traditional SPA | Melina.js |
+|-----------------|-----------|
+| Bundle everything | Islands hydrate selectively |
+| Full page refresh or client routing | Partial page swaps with state preservation |
+| Complex Webpack/Vite config | Zero config, Bun-native |
+| 100KB+ vendor chunks | Browser-native import maps |
+| Custom animation libraries | Native View Transitions API |
+| **State Loss on Nav** | **Hangar Architecture (State Persistence)** |
 
-### Is Melina production-ready?
+## 🏗️ The Hangar Architecture
 
-Yes! When `NODE_ENV` is set to `production` (e.g., `NODE_ENV=production bun run server.ts`):
+Melina.js uses a unique "Hangar" architecture for high-fidelity state persistence:
 
-- Assets built by `asset()` are cached with fingerprinted names for long-term browser caching.
-- JavaScript and CSS are minified.
-- Source maps are disabled for assets.
-- The `?dev` parameter is removed from `esm.sh` URLs in import maps.
+- **Single React Root** — One persistent React root manages all islands
+- **Portal-Based Rendering** — Islands are "docked" into DOM placeholders
+- **Surgical DOM Updates** — Only swapped content is replaced
 
-### How does Melina compare to Next.js or Remix?
-
-Melina is significantly more lightweight and takes a different philosophical approach:
-
-- **Minimal Build Step**: No complex global build step for your application. Assets are built on-demand by Bun.
-- **HTML Generation is Explicit**: You construct HTML, often via streaming, directly in your server-side TypeScript/JavaScript. There are no special file-system routing conventions for pages beyond what you implement in your handler.
-- **Handler-Centric**: All server logic (routing, API, page serving) typically resides in or is dispatched from the main handler function provided to `serve()`.
-- **Streaming-First by Design**: AsyncGenerators are a natural way to stream HTML.
-- **Leverages Bun's Strengths**: Built specifically for the Bun runtime, utilizing its speed, built-in TypeScript/JSX support, and asset building capabilities.
-- **Closer to the Platform**: Uses standard Web APIs like `Request`, `Response`, and leverages Import Maps for client-side modules.
-
-Next.js and Remix are more feature-rich, opinionated frameworks with their own routing conventions, data-loading patterns, and extensive build systems. Melina offers a leaner, more direct way to build fast, streaming web applications on Bun.
-
-### Can I use Melina with TypeScript?
-
-Yes, Melina is built with TypeScript in mind and works seamlessly with it. Bun handles TypeScript transpilation automatically for your server code and any assets processed by `asset()`.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request or open an issue.
+Learn more in the [Architecture Deep Dive](./docs/ARCHITECTURE.md).
 
 ## License
 
-MIT
+MIT © [Mements](https://github.com/mements)

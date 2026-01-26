@@ -1,0 +1,12 @@
+{
+    "name": "programmatic-api-example",
+    "version": "1.0.0",
+    "scripts": {
+        "dev": "bun run server.ts"
+    },
+    "dependencies": {
+        "melina": "link:../..",
+        "react": "^19.1.1",
+        "react-dom": "^19.1.1"
+    }
+}

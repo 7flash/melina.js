@@ -28,9 +28,44 @@ async function main() {
     const args = process.argv.slice(2);
     const [command, projectName] = args;
     
+    // Handle "melina start" command for app router
+    if (command === "start") {
+        console.log("🦊 Starting Melina app router...");
+        
+        // Check if app directory exists
+        const appDir = join(currentDir, "app");
+        try {
+            await stat(appDir);
+        } catch (error) {
+            console.error(`Error: No "app" directory found in current directory.`);
+            console.log(`\nCreate an app directory with pages:`);
+            console.log(`  app/page.tsx          -> /`);
+            console.log(`  app/about/page.tsx    -> /about`);
+            console.log(`  app/blog/[id]/page.tsx -> /blog/:id`);
+            process.exit(1);
+        }
+        
+        // Start the development server
+        const { serve, createAppRouter } = await import("../src/web.ts");
+        
+        const port = parseInt(process.env.PORT || "3000", 10);
+        
+        await serve(createAppRouter({
+            appDir,
+        }), { port });
+        
+        return;
+    }
+    
+    // Handle "melina init <project-name>" command
     if (command !== "init" || !projectName || projectName === "-h" || projectName === "--help") {
-        console.log("Usage: bunx melina init <project-name>");
-        console.log("Example: bunx melina init my-new-project");
+        console.log("Melina.js CLI");
+        console.log("\nUsage:");
+        console.log("  melina init <project-name>  Create a new project");
+        console.log("  melina start                Start app router development server");
+        console.log("\nExamples:");
+        console.log("  melina init my-new-project");
+        console.log("  melina start");
         return;
     }
     

@@ -1,0 +1,74 @@
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    background: #111;
+    color: white;
+}
+
+/* ============================================
+   View Transition Configuration
+   
+   Creates beautiful, slow morphing animations
+   for elements with view-transition-name set.
+   ============================================ */
+
+/* Root transition - default crossfade for everything */
+::view-transition {
+    /* Ensure transitions happen */
+    pointer-events: none;
+}
+
+/* Default page crossfade (root group) */
+::view-transition-old(root),
+::view-transition-new(root) {
+    animation-duration: 0.5s;
+    animation-timing-function: ease-out;
+}
+
+/* Main player container - smooth morph */
+::view-transition-group(music-player) {
+    animation-duration: 0.5s;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    z-index: 10;
+}
+
+::view-transition-old(music-player),
+::view-transition-new(music-player) {
+    animation-duration: 0.5s;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Album art - the hero element that morphs beautifully */
+::view-transition-group(album-art) {
+    animation-duration: 0.5s;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    z-index: 100;
+    /* Float above everything during transition */
+}
+
+::view-transition-old(album-art),
+::view-transition-new(album-art) {
+    animation-duration: 0.5s;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    mix-blend-mode: normal;
+}
+
+/* Make images/old content fade out smoothly */
+::view-transition-old(album-art) {
+    animation: fade-out 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Make new content fade in smoothly */
+::view-transition-new(album-art) {
+    animation: fade-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+@keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}

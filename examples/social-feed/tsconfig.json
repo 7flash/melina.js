@@ -1,0 +1,21 @@
+{
+    "compilerOptions": {
+        "jsx": "react-jsx",
+        "target": "ESNext",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "noEmit": true,
+        "skipLibCheck": true,
+        "baseUrl": ".",
+        "paths": {
+            "melina/*": [
+                "../../src/*"
+            ]
+        }
+    },
+    "include": [
+        "app/**/*",
+        "server.ts"
+    ]
+}

@@ -1,9 +1,31 @@
 {
-  "name": "@ments/web",
-  "version": "1.12.0",
-  "description": "A lightweight, type-safe server framework for Bun with automatic performance tracking.",
+  "name": "melina",
+  "version": "1.0.0",
+  "description": "A lightweight, islands-architecture web framework for Bun with Next.js-style routing.",
   "module": "./src/web.ts",
   "main": "./src/web.ts",
+  "bin": {
+    "melina": "./bin/melina"
+  },
+  "files": [
+    "src",
+    "bin",
+    "docs",
+    "GUIDE.md",
+    "README.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "ARCHITECTURE.md"
+  ],
+  "exports": {
+    ".": "./src/web.ts",
+    "./web": "./src/web.ts",
+    "./Link": "./src/Link.tsx",
+    "./island": "./src/island.ts",
+    "./client": "./src/client.ts",
+    "./client/jsx-runtime": "./src/client.ts",
+    "./client/jsx-dev-runtime": "./src/client.ts"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/mements/melina.js"
@@ -19,18 +41,23 @@
     "server",
     "framework",
     "typescript",
-    "performance",
     "web",
-    "api",
-    "frontend",
     "ssr",
-    "tailwind"
+    "islands",
+    "islands-architecture",
+    "hydration",
+    "nextjs",
+    "app-router",
+    "react",
+    "partial-hydration"
   ],
   "type": "module",
   "private": false,
   "sideEffects": false,
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/react": "^19.2.10",
+    "@types/react-dom": "^19.2.3"
   },
   "dependencies": {
     "@ments/utils": "^1.2.1",

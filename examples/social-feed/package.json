@@ -1,0 +1,12 @@
+{
+    "name": "melina-social-feed-example",
+    "type": "module",
+    "scripts": {
+        "dev": "bun run server.ts"
+    },
+    "dependencies": {
+        "melina": "file:../..",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0"
+    }
+}

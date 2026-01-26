@@ -1,0 +1,14 @@
+{
+    "name": "view-morph-example",
+    "version": "0.0.1",
+    "dependencies": {
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "framer-motion": "^10.16.4"
+    },
+    "devDependencies": {
+        "@types/react": "^18.2.0",
+        "@types/react-dom": "^18.2.0",
+        "typescript": "^5.0.0"
+    }
+}

@@ -1,7 +1,7 @@
-import { build as bunBuild, type BuildConfig, type BunFile } from "bun";
+import { build as bunBuild, type BuildConfig, type BunFile, plugin } from "bun";
 import path from "path";
 import { randomUUID } from "crypto";
-import { existsSync } from "fs";
+import { existsSync, readdirSync, readFileSync } from "fs";
 
 import autoprefixer from "autoprefixer";
 import postcss from "postcss";
@@ -11,6 +11,186 @@ import { unlink } from 'fs/promises';
 
 import { measure } from "@ments/utils";
 import { dedent } from "ts-dedent";
+import { discoverRoutes, matchRoute, type Route, type RouteMatch } from "./router";
+
+// ============================================================================
+// MELINA.JS AUTO-WRAPPING PLUGIN
+// Automatically transforms 'use client' components to island wrappers
+// ============================================================================
+
+/**
+ * Island wrapper code injected into client components
+ * Uses createElement since this is injected as a string
+ */
+const ISLAND_HELPER = `
+// [Melina.js] Auto-injected island wrapper
+import * as __React__ from 'react';
+const __MELINA_IS_SERVER__ = typeof window === 'undefined' && typeof Bun !== 'undefined';
+function __melina_wrap__(Component, name) {
+    if (__MELINA_IS_SERVER__) {
+        return function MelinaIslandPlaceholder(props) {
+            // Support stable instance ID via props._melinaInstance or default to component name
+            const instanceId = props?._melinaInstance || name;
+            // Filter out internal props before serializing
+            const { _melinaInstance, ...restProps } = props || {};
+            const propsJson = JSON.stringify(restProps || {}).replace(/"/g, '&quot;');
+            return __React__.createElement('div', {
+                'data-melina-island': name,
+                'data-instance': instanceId,
+                'data-props': propsJson,
+                style: { display: 'contents' }
+            });
+        };
+    }
+    return Component;
+}
+`;
+
+function hasUseClientDirective(content: string): boolean {
+  // Match 'use client' or "use client" at the start of a line (the actual directive)
+  // This avoids false positives from comments mentioning 'use client'
+  return /^['"]use client['"];?\s*$/m.test(content);
+}
+
+function extractExportedComponents(content: string): string[] {
+  const exports: string[] = [];
+
+  // Match: export function ComponentName
+  for (const match of content.matchAll(/export\s+function\s+([A-Z][a-zA-Z0-9]*)/g)) {
+    exports.push(match[1]);
+  }
+
+  // Match: export const ComponentName = 
+  for (const match of content.matchAll(/export\s+const\s+([A-Z][a-zA-Z0-9]*)\s*=/g)) {
+    exports.push(match[1]);
+  }
+
+  // Match: export default function ComponentName
+  for (const match of content.matchAll(/export\s+default\s+function\s+([A-Z][a-zA-Z0-9]*)/g)) {
+    exports.push(match[1]);
+  }
+
+  return [...new Set(exports)];
+}
+
+function transformClientComponent(content: string): string {
+  const components = extractExportedComponents(content);
+  if (components.length === 0) return content;
+
+  let transformed = content;
+
+  // Remove 'use client' directive and insert helper in its place
+  transformed = transformed.replace(
+    /['"]use client['"];?\s*\n/,
+    `${ISLAND_HELPER}\n`
+  );
+
+  // Track default export name
+  let defaultExportName: string | null = null;
+
+  // Handle default export first
+  const defaultMatch = content.match(/export\s+default\s+function\s+([A-Z][a-zA-Z0-9]*)/);
+  if (defaultMatch) {
+    defaultExportName = defaultMatch[1];
+    transformed = transformed.replace(
+      /export\s+default\s+function\s+([A-Z][a-zA-Z0-9]*)/,
+      `function $1__impl`
+    );
+  }
+
+  // Transform named exports
+  for (const name of components) {
+    if (name === defaultExportName) continue; // Already handled
+
+    // export function Name -> function Name__impl
+    transformed = transformed.replace(
+      new RegExp(`export\\s+function\\s+${name}\\b`),
+      `function ${name}__impl`
+    );
+
+    // export const Name = -> const Name__impl =
+    transformed = transformed.replace(
+      new RegExp(`export\\s+const\\s+${name}\\s*=`),
+      `const ${name}__impl =`
+    );
+  }
+
+  // Add wrapped exports at end
+  for (const name of components) {
+    if (name === defaultExportName) continue;
+    transformed += `\nexport const ${name} = __melina_wrap__(${name}__impl, '${name}');`;
+  }
+
+  // Add default export wrapper
+  if (defaultExportName) {
+    transformed += `\nexport default __melina_wrap__(${defaultExportName}__impl, '${defaultExportName}');`;
+  }
+
+  return transformed;
+}
+
+// ============================================================================
+// AUTO-WRAPPING PLUGIN DEFINITION
+// Not registered globally! Used only for SSR builds.
+// ============================================================================
+
+function resolveFile(basePath: string): string | null {
+  if (existsSync(basePath)) return basePath;
+  const extensions = ['.tsx', '.jsx', '.ts', '.js'];
+  for (const ext of extensions) {
+    if (existsSync(basePath + ext)) return basePath + ext;
+  }
+  return null;
+}
+
+const melinaPlugin = {
+  name: 'melina-auto-island',
+  setup(build: any) {
+    // 1. RESOLVE: Separate Client Components (Bundle) from Server/Shared (External)
+    build.onResolve({ filter: /^\.{1,2}\// }, async (args: any) => {
+      const fullPath = path.resolve(path.dirname(args.importer), args.path);
+
+      // Try to resolve the actual file
+      const resolvedPath = resolveFile(fullPath);
+
+      if (resolvedPath && /\.(tsx|jsx)$/.test(resolvedPath)) {
+        try {
+          const content = await Bun.file(resolvedPath).text();
+          if (hasUseClientDirective(content)) {
+            // Client Component -> Bundle it by returning the resolved path
+            console.log(`[Melina] Bundling client component: ${resolvedPath}`);
+            return { path: resolvedPath };
+          }
+        } catch (e) { }
+      }
+
+      // Shared/Server -> Externalize to preserve singleton
+      // We return the absolute path so the SSR artifact imports it correctly
+      return { external: true, path: resolvedPath || fullPath };
+    });
+
+    // 2. LOAD: Transform Client Components
+    build.onLoad({ filter: /\.(tsx|jsx)$/ }, async (args: any) => {
+      const content = await Bun.file(args.path).text();
+
+      const isClient = hasUseClientDirective(content);
+      console.log(`[Melina] onLoad: ${args.path} (isClient: ${isClient})`);
+
+      if (!isClient) {
+        return;
+      }
+
+      const transformed = transformClientComponent(content);
+      return {
+        contents: transformed,
+        loader: args.path.endsWith('.tsx') ? 'tsx' : 'jsx',
+      };
+    });
+  },
+};
+
+console.log('🦊 [Melina] Auto-wrapping ready (On-Demand)');
+
 
 type HandlerResponse = Response | AsyncGenerator<string, void, unknown> | string | object;
 
@@ -34,6 +214,49 @@ function generateRequestId(): string {
 }
 
 const isDev = process.env.NODE_ENV !== "production";
+
+/**
+ * Import a module for SSR with auto-wrapping support.
+ * Builds the module and local dependencies using the melinaPlugin to wrap client components.
+ */
+async function importSSR(filePath: string) {
+  // Unique build name based on path
+  const buildName = path.basename(filePath, path.extname(filePath)) + '-' + Bun.hash(filePath).toString(16);
+  const outDir = path.resolve(process.cwd(), '.melina/ssr');
+
+  // Read package.json for externals
+  let pkg: any = {};
+  try {
+    pkg = await Bun.file('package.json').json();
+  } catch (e) { }
+
+  const externals = [
+    'react', 'react-dom', 'react-dom/server', 'melina',
+    ...Object.keys(pkg.dependencies || {}),
+    ...Object.keys(pkg.devDependencies || {})
+  ];
+
+  const result = await Bun.build({
+    entrypoints: [filePath],
+    target: 'bun',
+    plugins: [melinaPlugin],
+    outdir: outDir,
+    naming: `${buildName}.js`,
+    external: externals,
+    sourcemap: 'inline'
+  });
+
+  if (!result.success) {
+    console.error('SSR Build Failed:', result.logs);
+    throw new Error(`SSR Build failed for ${filePath}`);
+  }
+
+  // Dynamic import the built artifact
+  // Add timestamp query to bypass ESM cache in dev
+  const timestamp = Date.now();
+  const buildPath = path.join(outDir, `${buildName}.js`);
+  return import(`${buildPath}?t=${timestamp}`);
+}
 
 // Global cleanup function for unix socket
 let cleanupUnixSocket: (() => Promise<void>) | null = null;
@@ -217,6 +440,75 @@ export async function imports(
 const buildCache: Record<string, { outputPath: string; content: ArrayBuffer }> = {};
 const builtAssets: Record<string, { content: ArrayBuffer; contentType: string }> = {};
 
+// Cached runtime bundle path
+let cachedRuntimePath: string | null = null;
+
+/**
+ * Build the Melina Hangar runtime from TypeScript source
+ * This bundles src/runtime/hangar.ts and serves it from memory
+ */
+async function buildRuntime(): Promise<string> {
+  // Return cached path if available
+  if (cachedRuntimePath && !isDev) {
+    return cachedRuntimePath;
+  }
+
+  // Find the runtime source file (in the package, not the user's app)
+  const runtimePath = path.resolve(__dirname, './runtime/hangar.ts');
+
+  if (!existsSync(runtimePath)) {
+    throw new Error(`Melina runtime not found at: ${runtimePath}`);
+  }
+
+  // Read package.json for externals
+  let packageJson: any;
+  try {
+    packageJson = (await import(path.resolve(__dirname, '../package.json'), { assert: { type: 'json' } })).default;
+  } catch {
+    packageJson = { dependencies: {} };
+  }
+
+  const dependencies = { ...(packageJson.dependencies || {}) };
+  const external = Object.keys(dependencies);
+
+  const buildConfig: BuildConfig = {
+    entrypoints: [runtimePath],
+    outdir: undefined, // Build to memory
+    minify: !isDev,
+    target: "browser",
+    sourcemap: isDev ? "linked" : "none",
+    external,
+    define: {
+      "process.env.NODE_ENV": JSON.stringify(isDev ? "development" : "production"),
+    },
+    naming: {
+      entry: "melina-runtime-[hash].[ext]",
+      chunk: "[name]-[hash].[ext]",
+      asset: "[name]-[hash].[ext]",
+    },
+  };
+
+  const result = await bunBuild(buildConfig);
+
+  const mainOutput = result.outputs.find(o => o.kind === 'entry-point');
+  if (!mainOutput) {
+    throw new Error('Failed to build Melina runtime');
+  }
+
+  // Store all outputs in memory
+  for (const output of result.outputs) {
+    const content = await output.arrayBuffer();
+    const outputPath = `/${path.basename(output.path)}`;
+    const contentType = output.type || getContentType(path.extname(output.path));
+    builtAssets[outputPath] = { content, contentType };
+  }
+
+  cachedRuntimePath = `/${path.basename(mainOutput.path)}`;
+  console.log(`🦊 [Melina] Runtime bundled: ${cachedRuntimePath}`);
+
+  return cachedRuntimePath;
+}
+
 /**
  * ## getContentType
  * Returns the appropriate MIME type for a given file extension.
@@ -338,7 +630,7 @@ export async function buildScript(filePath: string, allExternal = false): Promis
     }
     throw new Error(`Build failed for ${filePath}: ${error}`);
   }
-  
+
   const mainOutput = result.outputs.find(o => o.kind === 'entry-point');
   if (!mainOutput) {
     throw new Error(`No entry-point output found for ${filePath}`);
@@ -454,7 +746,7 @@ export async function buildAsset(file?: BunFile): Promise<string> {
 // Legacy function for backwards compatibility
 export async function asset(fileOrPath: BunFile | string): Promise<string> {
   console.warn('asset() is deprecated. Use buildScript(), buildStyle(), or buildAsset() instead.');
-  
+
   if (typeof fileOrPath === 'string') {
     const ext = path.extname(fileOrPath).toLowerCase();
     if (ext === '.css') {
@@ -491,7 +783,7 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
     // Auto-detect from BUN_PORT env var OR CLI argument
     const bunPort = process.env.BUN_PORT;
     const cliArg = process.argv[2];
-    
+
     if (bunPort) {
       const parsedPort = parseInt(bunPort, 10);
       if (!isNaN(parsedPort)) {
@@ -521,12 +813,12 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
   // Handle unix socket cleanup BEFORE starting server
   if (unix) {
     if (!unix.startsWith('\0')) {
-      await unlink(unix).catch(() => {});
+      await unlink(unix).catch(() => { });
     }
     // Store cleanup function for shutdown
     cleanupUnixSocket = async () => {
       if (unix && !unix.startsWith('\0')) {
-        await unlink(unix).catch(() => {});
+        await unlink(unix).catch(() => { });
       }
     };
   }
@@ -587,7 +879,7 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
             // Create a new headers object to ensure we can modify it
             const headers = new Headers(response.headers);
             headers.set("X-Request-ID", requestId);
-            
+
             // Clone the response with the updated headers
             return new Response(response.body, {
               status: response.status,
@@ -742,20 +1034,20 @@ export async function spa(options: FrontendAppOptions): Promise<string> {
 
 // @deprecated
 export async function frontendApp(options: FrontendAppOptions): Promise<string> {
-  const { 
-    entrypoint, 
-    stylePath, 
-    title = "Frontend App", 
+  const {
+    entrypoint,
+    stylePath,
+    title = "Frontend App",
     viewport = "width=device-width, initial-scale=1",
-    rebuild = true, 
-    serverData = {}, 
+    rebuild = true,
+    serverData = {},
     additionalAssets = [],
     meta = [],
     head = '',
     headerScripts = []
   } = options;
-  
- 
+
+
   // Build CSS
   let stylesVirtualPath = '';
   if (stylePath) {
@@ -765,7 +1057,7 @@ export async function frontendApp(options: FrontendAppOptions): Promise<string> 
       console.warn(`Style not found: ${stylePath}`);
     }
   }
-  
+
   // Build additional assets
   const assetPaths: string[] = [];
   for (const asset of additionalAssets) {
@@ -775,15 +1067,15 @@ export async function frontendApp(options: FrontendAppOptions): Promise<string> 
       assetPaths.push(virtualPath);
     }
   }
-  
+
   // Build React script
   const scriptPath = entrypoint.startsWith('/') ? entrypoint : path.join(process.cwd(), entrypoint);
-  
+
   const subpathImports = ['react-dom/client', 'react/jsx-dev-runtime', 'wouter/use-browser-location'];
-  
+
   const packagePath = path.resolve(process.cwd(), 'package.json');
   const packageJson = (await import(packagePath, { assert: { type: 'json' } })).default;
-  
+
   const importMaps = `
    <script type="importmap">
     ${JSON.stringify(await imports(subpathImports, packageJson))}
@@ -797,12 +1089,12 @@ export async function frontendApp(options: FrontendAppOptions): Promise<string> 
   } else {
     scriptVirtualPath = await measure(() => buildScript(scriptPath), `build script from ${scriptPath}`);
   }
-  
+
   if (!scriptVirtualPath) throw `failed to build script`;
 
   // Generate meta tags
   const metaTags = meta.map(m => `<meta name="${m.name}" content="${m.content}">`).join('\n');
-  
+
   // Generate additional head content
   const additionalHead = additionalAssets.map(asset => {
     if (asset.type === 'icon') {
@@ -812,7 +1104,7 @@ export async function frontendApp(options: FrontendAppOptions): Promise<string> 
   }).join('\n');
 
   // Generate header scripts
-  const headerScriptsHtml = headerScripts.map(script => 
+  const headerScriptsHtml = headerScripts.map(script =>
     `<script>${script}</script>`
   ).join('\n');
 
@@ -839,4 +1131,517 @@ export async function frontendApp(options: FrontendAppOptions): Promise<string> 
       </body>
     </html>
   `;
+}
+
+// ============================================================================
+// App Router - Next.js-style file-based routing
+// ============================================================================
+
+interface RenderPageOptions {
+  /** The page component to render (server-side) */
+  component: any;
+  /** Path to client-side component for hydration */
+  clientComponent?: string;
+  /** Path to CSS file */
+  stylePath?: string;
+  /** Page title */
+  title?: string;
+  /** Route parameters from URL */
+  params?: Record<string, any>;
+  /** Additional props to pass to component */
+  props?: Record<string, any>;
+  /** Viewport meta tag */
+  viewport?: string;
+  /** Additional meta tags */
+  meta?: Array<{ name: string; content: string }>;
+}
+
+/**
+ * Render a page component to HTML with SSR
+ * Used by app router to render route components
+ */
+export async function renderPage(options: RenderPageOptions): Promise<string> {
+  const {
+    component: Component,
+    clientComponent,
+    stylePath,
+    title = "Melina App",
+    params = {},
+    props = {},
+    viewport = "width=device-width, initial-scale=1",
+    meta = [],
+  } = options;
+
+  // Build CSS if provided
+  let stylesVirtualPath = '';
+  if (stylePath) {
+    try {
+      stylesVirtualPath = await buildStyle(stylePath);
+    } catch (error) {
+      console.warn(`Style not found: ${stylePath}`);
+    }
+  }
+
+  // Generate import map for React and dependencies
+  const subpathImports = ['react-dom/client', 'react/jsx-dev-runtime'];
+  let importMaps = '';
+  try {
+    const packagePath = path.resolve(process.cwd(), 'package.json');
+    const packageJson = (await import(packagePath, { assert: { type: 'json' } })).default;
+    importMaps = `
+      \u003cscript type="importmap"\u003e
+        ${JSON.stringify(await imports(subpathImports, packageJson))}
+      \u003c/script\u003e
+    `;
+  } catch (e) {
+    console.warn('Could not generate import map:', e);
+  }
+
+  //Server-side render the component
+  let serverHtml = '';
+  try {
+    // Import React for SSR
+    const React = await import('react');
+    const ReactDOMServer = await import('react-dom/server');
+
+    serverHtml = ReactDOMServer.renderToString(
+      React.createElement(Component, { ...props, params })
+    );
+  } catch (error) {
+    console.warn('SSR failed, will use client-side rendering only:', error);
+  }
+
+  // Build client component if provided
+  let scriptVirtualPath = '';
+  if (clientComponent) {
+    try {
+      scriptVirtualPath = await buildScript(clientComponent);
+    } catch (error) {
+      console.warn(`Client component build failed: ${clientComponent}`, error);
+    }
+  }
+
+  // Generate meta tags
+  const metaTags = meta.map(m => `<meta name="${m.name}" content="${m.content}">`).join('\n');
+
+  return dedent`
+    \u003c!DOCTYPE html\u003e
+    \u003chtml\u003e
+      \u003chead\u003e
+        ${importMaps}
+        \u003cmeta charset="utf-8"\u003e
+        \u003cmeta name="viewport" content="${viewport}"\u003e
+        ${metaTags}
+        \u003ctitle\u003e${title}\u003c/title\u003e
+        ${stylesVirtualPath ? `\u003clink rel="stylesheet" href="${stylesVirtualPath}" \u003e` : ''}
+      \u003c/head\u003e
+      \u003cbody\u003e
+        \u003cdiv id="root"\u003e${serverHtml}\u003c/div\u003e
+        \u003cscript\u003e
+          window.__MELINA_DATA__ = ${JSON.stringify({ params, props })};
+        \u003c/script\u003e
+        ${scriptVirtualPath ? `\u003cscript src="${scriptVirtualPath}" type="module"\u003e\u003c/script\u003e` : ''}
+      \u003c/body\u003e
+    \u003c/html\u003e
+  `;
+}
+
+interface AppRouterOptions {
+  /** Path to app directory (default: ./app) */
+  appDir?: string;
+  /** Default title for pages */
+  defaultTitle?: string;
+  /** Path to global CSS file */
+  globalCss?: string;
+}
+
+/**
+ * Create a request handler with file-based routing
+ * Automatically discovers routes from app directory
+ * 
+ * @example
+ * ```ts
+ * import { serve, createAppRouter } from 'melinajs/web';
+ * 
+ * serve(createAppRouter({
+ *   appDir: './app',
+ *   globalCss: './app/globals.css',
+ * }));
+ * ```
+ */
+export function createAppRouter(options: AppRouterOptions = {}): Handler {
+  let {
+    appDir = path.join(process.cwd(), 'app'),
+    defaultTitle = 'Melina App',
+  } = options;
+
+  // Ensure appDir is absolute for dynamic imports to work
+  if (!path.isAbsolute(appDir)) {
+    appDir = path.resolve(process.cwd(), appDir);
+  }
+
+  // Discover routes at startup
+  const routes = discoverRoutes(appDir);
+  console.log(`📁 Discovered ${routes.length} routes:`);
+  routes.forEach(route => {
+    const typeIcon = route.type === 'api' ? '⚡' : '📄';
+    const layoutInfo = route.layouts.length > 0 ? ` (${route.layouts.length} layouts)` : '';
+    console.log(`   ${typeIcon} ${route.pattern} -> ${path.relative(process.cwd(), route.filePath)}${layoutInfo}`);
+  });
+
+  // Look for global CSS file
+  let globalCss = options.globalCss;
+  if (!globalCss) {
+    const possiblePaths = [
+      path.join(appDir, 'globals.css'),
+      path.join(appDir, 'global.css'),
+      path.join(appDir, 'app.css'),
+    ];
+    for (const cssPath of possiblePaths) {
+      if (existsSync(cssPath)) {
+        globalCss = cssPath;
+        console.log(`📄 Found global CSS: ${path.relative(process.cwd(), cssPath)}`);
+        break;
+      }
+    }
+  }
+
+  return async (req: Request, measure: any) => {
+    const url = new URL(req.url);
+    const pathname = url.pathname;
+
+    // Match route
+    const match = matchRoute(pathname, routes);
+
+    if (!match) {
+      return new Response('404 - Not Found', {
+        status: 404,
+        headers: { 'Content-Type': 'text/html' }
+      });
+    }
+
+    try {
+      // Handle API routes
+      if (match.route.type === 'api') {
+        const apiModule = await import(match.route.filePath);
+        const method = req.method.toUpperCase();
+        const handler = apiModule[method] || apiModule.default;
+
+        if (!handler) {
+          return new Response('Method Not Allowed', { status: 405 });
+        }
+
+        const response = await handler(req, { params: match.params });
+        return response instanceof Response
+          ? response
+          : new Response(JSON.stringify(response), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+      }
+
+      // Handle Page routes
+      const pageModule = await importSSR(match.route.filePath);
+      const PageComponent = pageModule.default || pageModule.Page;
+
+      if (!PageComponent) {
+        throw new Error(`No default export found in ${match.route.filePath}`);
+      }
+
+      // Import React for SSR
+      const React = await import('react');
+      const ReactDOMServer = await import('react-dom/server');
+
+      // Build the component tree with nested layouts
+      let tree = React.createElement(PageComponent, { params: match.params });
+
+      // Wrap with layouts (innermost to outermost)
+      for (let i = match.route.layouts.length - 1; i >= 0; i--) {
+        const layoutPath = match.route.layouts[i];
+        const layoutModule = await importSSR(layoutPath);
+        const LayoutComponent = layoutModule.default;
+
+        if (LayoutComponent) {
+          tree = React.createElement(LayoutComponent, { children: tree });
+        }
+      }
+
+      // Render to HTML
+      const html = ReactDOMServer.renderToString(tree);
+
+      // Build CSS
+      let stylesVirtualPath = '';
+      if (globalCss) {
+        try {
+          stylesVirtualPath = await buildStyle(globalCss);
+        } catch (e) {
+          console.warn('Failed to build global CSS:', e);
+        }
+      }
+
+      // Generate import map for client-side hydration
+      const subpathImports = ['react-dom/client', 'react/jsx-dev-runtime'];
+      let importMaps = '';
+      try {
+        const packagePath = path.resolve(process.cwd(), 'package.json');
+        const packageJson = (await import(packagePath, { assert: { type: 'json' } })).default;
+        importMaps = `
+          <script type="importmap">
+            ${JSON.stringify(await imports(subpathImports, packageJson))}
+          </script>
+        `;
+      } catch (e) {
+        console.warn('Could not generate import map:', e);
+      }
+
+      // Build client components (islands)
+      // Scan for components with 'use client' directive
+      const componentsDir = path.join(appDir, 'components');
+      const islandScripts: string[] = [];
+      const islandManifest: Record<string, string> = {};
+
+      if (existsSync(componentsDir)) {
+        const componentFiles = readdirSync(componentsDir).filter(f => f.endsWith('.tsx'));
+
+        for (const file of componentFiles) {
+          const filePath = path.join(componentsDir, file);
+          const content = readFileSync(filePath, 'utf-8');
+
+          if (hasUseClientDirective(content)) {
+            // This is a Client Component - build it
+            try {
+              const scriptPath = await buildScript(filePath);
+
+              // Extract exported component names from the file
+              // Match: export function Name, export const Name, export { Name }
+              const exportMatches = content.matchAll(
+                /export\s+(?:function|const|class)\s+([A-Z][a-zA-Z0-9]*)|export\s+\{\s*([A-Z][a-zA-Z0-9]*(?:\s*,\s*[A-Z][a-zA-Z0-9]*)*)\s*\}|export\s+default\s+(?:function\s+)?([A-Z][a-zA-Z0-9]*)/g
+              );
+
+              let hasExports = false;
+              for (const match of exportMatches) {
+                const exportName = match[1] || match[3]; // Named export or default export
+                const multiExports = match[2]; // Multiple exports like { Foo, Bar }
+
+                if (exportName) {
+                  islandManifest[exportName] = scriptPath;
+                  console.log(`🏝️ Built island: ${exportName}`);
+                  hasExports = true;
+                }
+
+                if (multiExports) {
+                  const names = multiExports.split(',').map(n => n.trim());
+                  for (const name of names) {
+                    islandManifest[name] = scriptPath;
+                    console.log(`🏝️ Built island: ${name}`);
+                    hasExports = true;
+                  }
+                }
+              }
+
+              // Fallback: use filename if no exports found
+              if (!hasExports) {
+                const componentName = file.replace('.tsx', '');
+                islandManifest[componentName] = scriptPath;
+                console.log(`🏝️ Built island: ${componentName} (from filename)`);
+              }
+            } catch (e) {
+              console.warn(`Failed to build island ${file}:`, e);
+            }
+          }
+        }
+      }
+
+      // Also check for page.client.tsx (legacy pattern)
+      const clientComponentPath = match.route.filePath.replace(/\.tsx?$/, '.client.tsx');
+      let clientScript = '';
+      if (existsSync(clientComponentPath)) {
+        const scriptPath = await buildScript(clientComponentPath);
+        clientScript = `<script src="${scriptPath}" type="module"></script>`;
+      }
+
+      // ============================================================
+      // Single Root + Portals Architecture (Hangar)
+      // ============================================================
+      // Instead of per-island hydration scripts, we use:
+      // 1. JSON meta object mapping island names to bundle paths
+      // 2. Single runtime script that creates ONE React root
+      // 3. All islands rendered as portals into their placeholders
+      // ============================================================
+
+      // Generate island meta as JSON (not window assignment)
+      const islandMeta = Object.keys(islandManifest).length > 0
+        ? `<script id="__MELINA_META__" type="application/json">${JSON.stringify(islandManifest)}</script>`
+        : '';
+
+      // Build and cache the Hangar runtime (if there are islands)
+      let runtimeScript = '';
+      if (Object.keys(islandManifest).length > 0) {
+        const runtimePath = await buildRuntime();
+        runtimeScript = `<script src="${runtimePath}" type="module"></script>`;
+      }
+
+      let fullHtml = `<!DOCTYPE html>${html}`;
+
+      // Inject CSS into <head> to prevent FOUC
+      if (stylesVirtualPath) {
+        fullHtml = fullHtml.replace('</head>', `<link rel="stylesheet" href="${stylesVirtualPath}"></head>`);
+      }
+
+      // Inject import maps and scripts before </body>
+      const scripts = `
+        ${importMaps}
+        ${islandMeta}
+        ${runtimeScript}
+        ${clientScript}
+      `;
+
+      fullHtml = fullHtml.replace('</body>', `${scripts}</body>`);
+
+      return new Response(fullHtml, {
+        headers: {
+          'Content-Type': 'text/html',
+          'Cache-Control': isDev ? 'no-cache' : 'public, max-age=3600',
+        },
+      });
+    } catch (error: any) {
+      console.error('Error rendering page:', error);
+      return new Response(`
+        <!DOCTYPE html>
+        <html>
+          <body>
+            <h1>500 - Internal Server Error</h1>
+            <pre>${isDev ? error.stack : 'An error occurred'}</pre>
+          </body>
+        </html>
+      `, {
+        status: 500,
+        headers: { 'Content-Type': 'text/html' },
+      });
+    }
+  };
+}
+
+// ============================================================================
+// PROGRAMMATIC API
+// Allows starting Melina from your own script instead of using CLI
+// ============================================================================
+
+export interface StartOptions {
+  /** Path to app directory (default: ./app) */
+  appDir?: string;
+  /** Port to listen on (default: 3000) */
+  port?: number;
+  /** Unix socket path (alternative to port) */
+  unix?: string;
+  /** Default page title */
+  defaultTitle?: string;
+  /** Path to global CSS file */
+  globalCss?: string;
+}
+
+/**
+ * Start the Melina development server programmatically
+ * 
+ * This is the recommended way to use Melina in your own scripts,
+ * giving you full control over the server lifecycle.
+ * 
+ * @example
+ * ```ts
+ * // server.ts
+ * import { start } from 'melina';
+ * 
+ * // Basic usage
+ * await start();
+ * 
+ * // With options
+ * await start({
+ *   appDir: './my-app',
+ *   port: 8080,
+ *   defaultTitle: 'My Awesome App',
+ * });
+ * ```
+ * 
+ * @example Custom middleware
+ * ```ts
+ * import { serve, createAppRouter } from 'melina';
+ * 
+ * const appRouter = createAppRouter({ appDir: './app' });
+ * 
+ * serve(async (req, measure) => {
+ *   // Custom middleware logic
+ *   console.log('Request:', req.url);
+ *   
+ *   // Add auth check, rate limiting, etc.
+ *   if (req.url.includes('/admin') && !isAuthenticated(req)) {
+ *     return new Response('Unauthorized', { status: 401 });
+ *   }
+ *   
+ *   // Delegate to app router
+ *   return appRouter(req, measure);
+ * }, { port: 3000 });
+ * ```
+ */
+export async function start(options: StartOptions = {}): Promise<ReturnType<typeof Bun.serve>> {
+  let {
+    appDir = path.join(process.cwd(), 'app'),
+    port = parseInt(process.env.PORT || '3000', 10),
+    unix,
+    defaultTitle = 'Melina App',
+    globalCss,
+  } = options;
+
+  // Ensure appDir is absolute
+  if (!path.isAbsolute(appDir)) {
+    appDir = path.resolve(process.cwd(), appDir);
+  }
+
+  // Validate app directory exists
+  if (!existsSync(appDir)) {
+    console.error(`❌ Error: No "app" directory found at: ${appDir}`);
+    console.log(`\nCreate an app directory with pages:`);
+    console.log(`  ${appDir}/page.tsx          -> /`);
+    console.log(`  ${appDir}/about/page.tsx    -> /about`);
+    console.log(`  ${appDir}/blog/[id]/page.tsx -> /blog/:id`);
+    throw new Error(`App directory not found: ${appDir}`);
+  }
+
+  console.log('🦊 Starting Melina server...');
+
+  const router = createAppRouter({
+    appDir,
+    defaultTitle,
+    globalCss,
+  });
+
+  return serve(router, {
+    port: unix ? undefined : port,
+    unix,
+  });
+}
+
+/**
+ * Create a Melina app instance for programmatic use
+ * Returns the router handler that can be used with custom server logic
+ * 
+ * @example
+ * ```ts
+ * import { createApp, serve } from 'melina';
+ * 
+ * const app = createApp({ appDir: './app' });
+ * 
+ * // Use with custom server
+ * Bun.serve({
+ *   port: 3000,
+ *   fetch: async (req) => {
+ *     // Custom logic before Melina handles the request
+ *     if (req.url.endsWith('/health')) {
+ *       return new Response('OK');
+ *     }
+ *     return app(req, () => {});
+ *   }
+ * });
+ * ```
+ */
+export function createApp(options: AppRouterOptions = {}): Handler {
+  return createAppRouter(options);
 }
