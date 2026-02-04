@@ -26,7 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </div>
 
                 {/* Messenger Island - Persists across navigations */}
-                <Messenger />
+                <Messenger _melinaInstance="GlobalMessenger" />
             </body>
         </html>
     );

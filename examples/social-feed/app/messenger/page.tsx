@@ -1,9 +1,11 @@
 /**
  * Full Messenger Page
- * Renders the Messenger component in full-page mode
+ * 
+ * This page renders nothing itself - the Messenger island from root layout
+ * detects when we're on /messenger and switches to full-page mode.
+ * This preserves state across the widget → full-page transition.
  */
-import Messenger from '../components/Messenger';
 
 export default function MessengerPage() {
-    return <Messenger fullPage />;
+    return null; // Messenger island handles rendering based on route
 }

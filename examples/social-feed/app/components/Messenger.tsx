@@ -13,7 +13,7 @@
  */
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 
 // Type declaration for Melina's global navigation function
 declare global {
@@ -42,7 +42,9 @@ interface Message {
 }
 
 interface MessengerProps {
-    fullPage?: boolean;
+    // No props needed - component detects route automatically
+    /** Internal Melina prop for unique island instance identification */
+    _melinaInstance?: string;
 }
 
 // Initial contacts
@@ -57,8 +59,37 @@ const initialContacts: Contact[] = [
     { id: 8, name: 'Ethan Garcia', avatar: 'EG', status: 'away', lastMessage: 'Meeting at 3?', lastMessageTime: '5h', unread: 0 },
 ];
 
-export default function Messenger({ fullPage = false }: MessengerProps) {
-    const [isOpen, setIsOpen] = useState(fullPage);
+// Route tracking for detecting full-page mode
+let currentPath = typeof window !== 'undefined' ? window.location.pathname : '/';
+const pathListeners = new Set<() => void>();
+
+function subscribePath(cb: () => void) {
+    pathListeners.add(cb);
+    return () => pathListeners.delete(cb);
+}
+
+function getPath() {
+    return currentPath;
+}
+
+// Listen for Melina navigation events  
+if (typeof window !== 'undefined') {
+    window.addEventListener('melina:navigation-start', (e: any) => {
+        currentPath = e.detail?.to || window.location.pathname;
+        pathListeners.forEach(cb => cb());
+    });
+    window.addEventListener('popstate', () => {
+        currentPath = window.location.pathname;
+        pathListeners.forEach(cb => cb());
+    });
+}
+
+export default function Messenger({ }: MessengerProps) {
+    // Detect if we're on /messenger route - determines full-page vs widget mode
+    const path = useSyncExternalStore(subscribePath, getPath, () => '/');
+    const isFullPage = path === '/messenger';
+
+    const [isOpen, setIsOpen] = useState(false);
     const [contacts, setContacts] = useState<Contact[]>(initialContacts);
     const [activeChat, setActiveChat] = useState<Contact | null>(null);
     const [messages, setMessages] = useState<Map<number, Message[]>>(new Map());
@@ -66,6 +97,13 @@ export default function Messenger({ fullPage = false }: MessengerProps) {
     const [totalUnread, setTotalUnread] = useState(6);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const eventSourceRef = useRef<EventSource | null>(null);
+
+    // Auto-open when in full-page mode
+    useEffect(() => {
+        if (isFullPage) {
+            setIsOpen(true);
+        }
+    }, [isFullPage]);
 
     // Auto-scroll to bottom on new messages
     useEffect(() => {
@@ -206,7 +244,7 @@ export default function Messenger({ fullPage = false }: MessengerProps) {
     };
 
     // Full-page mode renders the messenger as the main content
-    if (fullPage) {
+    if (isFullPage) {
         return (
             <div className="messenger-fullpage">
                 <div className="messenger-fullpage-header">

@@ -40,6 +40,536 @@ export type Props = Record<string, any> & { children?: Child | Child[] };
 export type Child = VNode | string | number | boolean | null | undefined;
 export type Component<P = Props> = (props: P) => VNode | null;
 
+// =============================================================================
+// JSX TYPE DEFINITIONS (for TypeScript JSX support)
+// =============================================================================
+
+type EventHandler<E = Event> = (event: E) => void;
+
+interface HTMLAttributes {
+    // Standard HTML attributes
+    id?: string;
+    className?: string;
+    class?: string;
+    style?: string | Record<string, string | number>;
+    title?: string;
+    tabIndex?: number;
+    role?: string;
+    hidden?: boolean;
+    dir?: 'ltr' | 'rtl' | 'auto';
+    lang?: string;
+    draggable?: boolean | 'true' | 'false';
+    contentEditable?: boolean | 'true' | 'false' | 'inherit';
+    spellCheck?: boolean | 'true' | 'false';
+
+    // ARIA attributes
+    'aria-label'?: string;
+    'aria-labelledby'?: string;
+    'aria-describedby'?: string;
+    'aria-hidden'?: boolean | 'true' | 'false';
+    'aria-expanded'?: boolean | 'true' | 'false';
+    'aria-selected'?: boolean | 'true' | 'false';
+    'aria-checked'?: boolean | 'true' | 'false' | 'mixed';
+    'aria-disabled'?: boolean | 'true' | 'false';
+    'aria-live'?: 'off' | 'assertive' | 'polite';
+    'aria-busy'?: boolean | 'true' | 'false';
+    'aria-current'?: boolean | 'true' | 'false' | 'page' | 'step' | 'location' | 'date' | 'time';
+
+    // Data attributes
+    [key: `data-${string}`]: string | number | boolean | undefined;
+
+    // Event handlers
+    onClick?: EventHandler<MouseEvent>;
+    onDoubleClick?: EventHandler<MouseEvent>;
+    onMouseDown?: EventHandler<MouseEvent>;
+    onMouseUp?: EventHandler<MouseEvent>;
+    onMouseEnter?: EventHandler<MouseEvent>;
+    onMouseLeave?: EventHandler<MouseEvent>;
+    onMouseMove?: EventHandler<MouseEvent>;
+    onMouseOver?: EventHandler<MouseEvent>;
+    onMouseOut?: EventHandler<MouseEvent>;
+    onContextMenu?: EventHandler<MouseEvent>;
+
+    onKeyDown?: EventHandler<KeyboardEvent>;
+    onKeyUp?: EventHandler<KeyboardEvent>;
+    onKeyPress?: EventHandler<KeyboardEvent>;
+
+    onFocus?: EventHandler<FocusEvent>;
+    onBlur?: EventHandler<FocusEvent>;
+
+    onChange?: EventHandler<Event>;
+    onInput?: EventHandler<Event>;
+    onSubmit?: EventHandler<Event>;
+    onReset?: EventHandler<Event>;
+
+    onScroll?: EventHandler<Event>;
+    onWheel?: EventHandler<WheelEvent>;
+
+    onDrag?: EventHandler<DragEvent>;
+    onDragEnd?: EventHandler<DragEvent>;
+    onDragEnter?: EventHandler<DragEvent>;
+    onDragLeave?: EventHandler<DragEvent>;
+    onDragOver?: EventHandler<DragEvent>;
+    onDragStart?: EventHandler<DragEvent>;
+    onDrop?: EventHandler<DragEvent>;
+
+    onLoad?: EventHandler<Event>;
+    onError?: EventHandler<Event>;
+
+    onTouchStart?: EventHandler<TouchEvent>;
+    onTouchMove?: EventHandler<TouchEvent>;
+    onTouchEnd?: EventHandler<TouchEvent>;
+    onTouchCancel?: EventHandler<TouchEvent>;
+
+    onPointerDown?: EventHandler<PointerEvent>;
+    onPointerUp?: EventHandler<PointerEvent>;
+    onPointerMove?: EventHandler<PointerEvent>;
+    onPointerEnter?: EventHandler<PointerEvent>;
+    onPointerLeave?: EventHandler<PointerEvent>;
+    onPointerCancel?: EventHandler<PointerEvent>;
+
+    onAnimationStart?: EventHandler<AnimationEvent>;
+    onAnimationEnd?: EventHandler<AnimationEvent>;
+    onAnimationIteration?: EventHandler<AnimationEvent>;
+
+    onTransitionEnd?: EventHandler<TransitionEvent>;
+
+    // Ref
+    ref?: { current: HTMLElement | null };
+
+    // Key
+    key?: string | number;
+
+    // Children
+    children?: Child | Child[];
+
+    // dangerouslySetInnerHTML
+    dangerouslySetInnerHTML?: { __html: string };
+}
+
+interface AnchorHTMLAttributes extends HTMLAttributes {
+    href?: string;
+    target?: '_self' | '_blank' | '_parent' | '_top';
+    rel?: string;
+    download?: boolean | string;
+    hrefLang?: string;
+    type?: string;
+}
+
+interface ButtonHTMLAttributes extends HTMLAttributes {
+    type?: 'button' | 'submit' | 'reset';
+    disabled?: boolean;
+    form?: string;
+    formAction?: string;
+    formEncType?: string;
+    formMethod?: string;
+    formNoValidate?: boolean;
+    formTarget?: string;
+    name?: string;
+    value?: string | number;
+}
+
+interface FormHTMLAttributes extends HTMLAttributes {
+    action?: string;
+    encType?: string;
+    method?: 'get' | 'post' | 'dialog';
+    name?: string;
+    noValidate?: boolean;
+    target?: string;
+    autoComplete?: string;
+}
+
+interface InputHTMLAttributes extends HTMLAttributes {
+    accept?: string;
+    alt?: string;
+    autoComplete?: string;
+    autoFocus?: boolean;
+    capture?: boolean | 'user' | 'environment';
+    checked?: boolean;
+    defaultChecked?: boolean;
+    defaultValue?: string | number;
+    disabled?: boolean;
+    form?: string;
+    formAction?: string;
+    formEncType?: string;
+    formMethod?: string;
+    formNoValidate?: boolean;
+    formTarget?: string;
+    height?: number | string;
+    list?: string;
+    max?: number | string;
+    maxLength?: number;
+    min?: number | string;
+    minLength?: number;
+    multiple?: boolean;
+    name?: string;
+    pattern?: string;
+    placeholder?: string;
+    readOnly?: boolean;
+    required?: boolean;
+    size?: number;
+    src?: string;
+    step?: number | string;
+    type?: 'button' | 'checkbox' | 'color' | 'date' | 'datetime-local' | 'email' | 'file' | 'hidden' | 'image' | 'month' | 'number' | 'password' | 'radio' | 'range' | 'reset' | 'search' | 'submit' | 'tel' | 'text' | 'time' | 'url' | 'week';
+    value?: string | number;
+    width?: number | string;
+}
+
+interface TextareaHTMLAttributes extends HTMLAttributes {
+    autoComplete?: string;
+    autoFocus?: boolean;
+    cols?: number;
+    defaultValue?: string;
+    disabled?: boolean;
+    form?: string;
+    maxLength?: number;
+    minLength?: number;
+    name?: string;
+    placeholder?: string;
+    readOnly?: boolean;
+    required?: boolean;
+    rows?: number;
+    value?: string;
+    wrap?: 'hard' | 'soft' | 'off';
+}
+
+interface SelectHTMLAttributes extends HTMLAttributes {
+    autoComplete?: string;
+    autoFocus?: boolean;
+    disabled?: boolean;
+    form?: string;
+    multiple?: boolean;
+    name?: string;
+    required?: boolean;
+    size?: number;
+    value?: string | number | string[];
+    defaultValue?: string | number | string[];
+}
+
+interface OptionHTMLAttributes extends HTMLAttributes {
+    disabled?: boolean;
+    label?: string;
+    selected?: boolean;
+    value?: string | number;
+}
+
+interface ImgHTMLAttributes extends HTMLAttributes {
+    alt?: string;
+    crossOrigin?: 'anonymous' | 'use-credentials' | '';
+    decoding?: 'async' | 'auto' | 'sync';
+    height?: number | string;
+    loading?: 'eager' | 'lazy';
+    referrerPolicy?: string;
+    sizes?: string;
+    src?: string;
+    srcSet?: string;
+    useMap?: string;
+    width?: number | string;
+}
+
+interface LabelHTMLAttributes extends HTMLAttributes {
+    htmlFor?: string;
+    form?: string;
+}
+
+interface TableHTMLAttributes extends HTMLAttributes {
+    cellPadding?: number | string;
+    cellSpacing?: number | string;
+    summary?: string;
+}
+
+interface TdHTMLAttributes extends HTMLAttributes {
+    colSpan?: number;
+    headers?: string;
+    rowSpan?: number;
+    scope?: 'col' | 'colgroup' | 'row' | 'rowgroup';
+}
+
+interface ThHTMLAttributes extends HTMLAttributes {
+    colSpan?: number;
+    headers?: string;
+    rowSpan?: number;
+    scope?: 'col' | 'colgroup' | 'row' | 'rowgroup';
+    abbr?: string;
+}
+
+interface IframeHTMLAttributes extends HTMLAttributes {
+    allow?: string;
+    allowFullScreen?: boolean;
+    height?: number | string;
+    loading?: 'eager' | 'lazy';
+    name?: string;
+    referrerPolicy?: string;
+    sandbox?: string;
+    src?: string;
+    srcDoc?: string;
+    width?: number | string;
+}
+
+interface VideoHTMLAttributes extends HTMLAttributes {
+    autoPlay?: boolean;
+    controls?: boolean;
+    crossOrigin?: 'anonymous' | 'use-credentials' | '';
+    height?: number | string;
+    loop?: boolean;
+    muted?: boolean;
+    playsInline?: boolean;
+    poster?: string;
+    preload?: 'auto' | 'metadata' | 'none';
+    src?: string;
+    width?: number | string;
+}
+
+interface AudioHTMLAttributes extends HTMLAttributes {
+    autoPlay?: boolean;
+    controls?: boolean;
+    crossOrigin?: 'anonymous' | 'use-credentials' | '';
+    loop?: boolean;
+    muted?: boolean;
+    preload?: 'auto' | 'metadata' | 'none';
+    src?: string;
+}
+
+interface CanvasHTMLAttributes extends HTMLAttributes {
+    height?: number | string;
+    width?: number | string;
+}
+
+interface MetaHTMLAttributes extends HTMLAttributes {
+    charSet?: string;
+    content?: string;
+    httpEquiv?: string;
+    name?: string;
+}
+
+interface LinkHTMLAttributes extends HTMLAttributes {
+    as?: string;
+    crossOrigin?: 'anonymous' | 'use-credentials' | '';
+    href?: string;
+    hrefLang?: string;
+    integrity?: string;
+    media?: string;
+    referrerPolicy?: string;
+    rel?: string;
+    sizes?: string;
+    type?: string;
+}
+
+interface ScriptHTMLAttributes extends HTMLAttributes {
+    async?: boolean;
+    crossOrigin?: 'anonymous' | 'use-credentials' | '';
+    defer?: boolean;
+    integrity?: string;
+    noModule?: boolean;
+    referrerPolicy?: string;
+    src?: string;
+    type?: string;
+}
+
+interface StyleHTMLAttributes extends HTMLAttributes {
+    media?: string;
+    scoped?: boolean;
+    type?: string;
+}
+
+interface SVGAttributes extends HTMLAttributes {
+    viewBox?: string;
+    xmlns?: string;
+    fill?: string;
+    stroke?: string;
+    strokeWidth?: number | string;
+    d?: string;
+    cx?: number | string;
+    cy?: number | string;
+    r?: number | string;
+    x?: number | string;
+    y?: number | string;
+    x1?: number | string;
+    x2?: number | string;
+    y1?: number | string;
+    y2?: number | string;
+    width?: number | string;
+    height?: number | string;
+    transform?: string;
+    opacity?: number | string;
+    clipPath?: string;
+    points?: string;
+    rx?: number | string;
+    ry?: number | string;
+}
+
+// JSX namespace for TypeScript
+export namespace JSX {
+    export type Element = VNode;
+    export type ElementType = string | Component<any> | typeof Fragment;
+
+    export interface ElementAttributesProperty { props: {}; }
+    export interface ElementChildrenAttribute { children: {}; }
+
+    export interface IntrinsicElements {
+        // Document metadata
+        html: HTMLAttributes;
+        head: HTMLAttributes;
+        title: HTMLAttributes;
+        base: HTMLAttributes;
+        link: LinkHTMLAttributes;
+        meta: MetaHTMLAttributes;
+        style: StyleHTMLAttributes;
+
+        // Sectioning root
+        body: HTMLAttributes;
+
+        // Content sectioning
+        address: HTMLAttributes;
+        article: HTMLAttributes;
+        aside: HTMLAttributes;
+        footer: HTMLAttributes;
+        header: HTMLAttributes;
+        h1: HTMLAttributes;
+        h2: HTMLAttributes;
+        h3: HTMLAttributes;
+        h4: HTMLAttributes;
+        h5: HTMLAttributes;
+        h6: HTMLAttributes;
+        hgroup: HTMLAttributes;
+        main: HTMLAttributes;
+        nav: HTMLAttributes;
+        section: HTMLAttributes;
+        search: HTMLAttributes;
+
+        // Text content
+        blockquote: HTMLAttributes;
+        dd: HTMLAttributes;
+        div: HTMLAttributes;
+        dl: HTMLAttributes;
+        dt: HTMLAttributes;
+        figcaption: HTMLAttributes;
+        figure: HTMLAttributes;
+        hr: HTMLAttributes;
+        li: HTMLAttributes;
+        menu: HTMLAttributes;
+        ol: HTMLAttributes;
+        p: HTMLAttributes;
+        pre: HTMLAttributes;
+        ul: HTMLAttributes;
+
+        // Inline text semantics
+        a: AnchorHTMLAttributes;
+        abbr: HTMLAttributes;
+        b: HTMLAttributes;
+        bdi: HTMLAttributes;
+        bdo: HTMLAttributes;
+        br: HTMLAttributes;
+        cite: HTMLAttributes;
+        code: HTMLAttributes;
+        data: HTMLAttributes;
+        dfn: HTMLAttributes;
+        em: HTMLAttributes;
+        i: HTMLAttributes;
+        kbd: HTMLAttributes;
+        mark: HTMLAttributes;
+        q: HTMLAttributes;
+        rp: HTMLAttributes;
+        rt: HTMLAttributes;
+        ruby: HTMLAttributes;
+        s: HTMLAttributes;
+        samp: HTMLAttributes;
+        small: HTMLAttributes;
+        span: HTMLAttributes;
+        strong: HTMLAttributes;
+        sub: HTMLAttributes;
+        sup: HTMLAttributes;
+        time: HTMLAttributes;
+        u: HTMLAttributes;
+        var: HTMLAttributes;
+        wbr: HTMLAttributes;
+
+        // Image and multimedia
+        area: HTMLAttributes;
+        audio: AudioHTMLAttributes;
+        img: ImgHTMLAttributes;
+        map: HTMLAttributes;
+        track: HTMLAttributes;
+        video: VideoHTMLAttributes;
+
+        // Embedded content
+        embed: HTMLAttributes;
+        iframe: IframeHTMLAttributes;
+        object: HTMLAttributes;
+        param: HTMLAttributes;
+        picture: HTMLAttributes;
+        portal: HTMLAttributes;
+        source: HTMLAttributes;
+
+        // SVG and MathML
+        svg: SVGAttributes;
+        math: HTMLAttributes;
+        path: SVGAttributes;
+        circle: SVGAttributes;
+        rect: SVGAttributes;
+        line: SVGAttributes;
+        polyline: SVGAttributes;
+        polygon: SVGAttributes;
+        ellipse: SVGAttributes;
+        g: SVGAttributes;
+        defs: SVGAttributes;
+        use: SVGAttributes;
+        text: SVGAttributes;
+        tspan: SVGAttributes;
+        clipPath: SVGAttributes;
+        mask: SVGAttributes;
+        linearGradient: SVGAttributes;
+        radialGradient: SVGAttributes;
+        stop: SVGAttributes;
+
+        // Scripting
+        canvas: CanvasHTMLAttributes;
+        noscript: HTMLAttributes;
+        script: ScriptHTMLAttributes;
+
+        // Demarcating edits
+        del: HTMLAttributes;
+        ins: HTMLAttributes;
+
+        // Table content
+        caption: HTMLAttributes;
+        col: HTMLAttributes;
+        colgroup: HTMLAttributes;
+        table: TableHTMLAttributes;
+        tbody: HTMLAttributes;
+        td: TdHTMLAttributes;
+        tfoot: HTMLAttributes;
+        th: ThHTMLAttributes;
+        thead: HTMLAttributes;
+        tr: HTMLAttributes;
+
+        // Forms
+        button: ButtonHTMLAttributes;
+        datalist: HTMLAttributes;
+        fieldset: HTMLAttributes;
+        form: FormHTMLAttributes;
+        input: InputHTMLAttributes;
+        label: LabelHTMLAttributes;
+        legend: HTMLAttributes;
+        meter: HTMLAttributes;
+        optgroup: HTMLAttributes;
+        option: OptionHTMLAttributes;
+        output: HTMLAttributes;
+        progress: HTMLAttributes;
+        select: SelectHTMLAttributes;
+        textarea: TextareaHTMLAttributes;
+
+        // Interactive elements
+        details: HTMLAttributes;
+        dialog: HTMLAttributes;
+        summary: HTMLAttributes;
+
+        // Web Components
+        slot: HTMLAttributes;
+        template: HTMLAttributes;
+    }
+}
+
 // Internal fiber for tracking component state
 interface Fiber {
     node: HTMLElement | Text | null;

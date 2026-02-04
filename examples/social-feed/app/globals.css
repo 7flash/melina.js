@@ -590,12 +590,19 @@ body {
 
 /* Full-Page Messenger */
 .messenger-fullpage {
-    height: calc(100vh - 48px);
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 100vh;
     display: flex;
     flex-direction: column;
     max-width: 1200px;
     margin: 0 auto;
     padding: 24px;
+    background: var(--bg-primary);
+    z-index: 1000;
 }
 
 .messenger-fullpage-header {
