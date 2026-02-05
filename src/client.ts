@@ -640,9 +640,157 @@ export function createElement(
 }
 
 // JSX runtime exports (for automatic JSX transform)
-export const jsx = createElement;
-export const jsxs = createElement;
-export const jsxDEV = createElement;
+// These have different signatures than createElement!
+// jsx/jsxs: (type, props, key?) - children are in props.children
+// jsxDEV: (type, props, key, isStaticChildren, source, self) - 6 args
+
+export function jsx(
+    type: string | Component<any> | typeof Fragment,
+    props: Props | null,
+    key?: string | number | null
+): VNode {
+    return {
+        type,
+        props: props || {},
+        key: key ?? (props?.key ?? null),
+    };
+}
+
+export function jsxs(
+    type: string | Component<any> | typeof Fragment,
+    props: Props | null,
+    key?: string | number | null
+): VNode {
+    return {
+        type,
+        props: props || {},
+        key: key ?? (props?.key ?? null),
+    };
+}
+
+export function jsxDEV(
+    type: string | Component<any> | typeof Fragment,
+    props: Props | null,
+    key?: string | number | null,
+    _isStaticChildren?: boolean,
+    _source?: any,
+    _self?: any
+): VNode {
+    return {
+        type,
+        props: props || {},
+        key: key ?? (props?.key ?? null),
+    };
+}
+
+// =============================================================================
+// SERVER-SIDE RENDERING
+// =============================================================================
+
+/**
+ * Render a VNode tree to an HTML string (SSR)
+ * This is the React-free equivalent of ReactDOMServer.renderToString()
+ */
+export function renderToString(vnode: VNode | string | number | boolean | null | undefined): string {
+    if (vnode == null || typeof vnode === 'boolean') {
+        return '';
+    }
+
+    if (typeof vnode === 'string') {
+        return escapeHtml(vnode);
+    }
+
+    if (typeof vnode === 'number') {
+        return String(vnode);
+    }
+
+    const { type, props } = vnode;
+
+    // Handle Fragment
+    if (type === Fragment) {
+        return renderChildren(props.children);
+    }
+
+    // Handle function components
+    if (typeof type === 'function') {
+        const result = type(props);
+        return renderToString(result);
+    }
+
+    // Handle HTML elements
+    const tagName = type as string;
+    const attrs = renderAttributes(props);
+    const children = renderChildren(props.children);
+
+    // Void elements (self-closing)
+    const voidElements = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'];
+    if (voidElements.includes(tagName)) {
+        return `<${tagName}${attrs}>`;
+    }
+
+    return `<${tagName}${attrs}>${children}</${tagName}>`;
+}
+
+function escapeHtml(str: string): string {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function renderAttributes(props: Props): string {
+    const attrs: string[] = [];
+
+    for (const [key, value] of Object.entries(props)) {
+        if (key === 'children' || key === 'key' || key === 'ref') continue;
+        if (value == null || value === false) continue;
+
+        // Handle className -> class
+        const attrName = key === 'className' ? 'class' : key;
+
+        // Handle style object
+        if (key === 'style' && typeof value === 'object') {
+            const styleStr = Object.entries(value)
+                .map(([k, v]) => `${k.replace(/([A-Z])/g, '-$1').toLowerCase()}:${v}`)
+                .join(';');
+            attrs.push(`style="${escapeHtml(styleStr)}"`);
+            continue;
+        }
+
+        // Handle event handlers (skip on server)
+        if (key.startsWith('on') && typeof value === 'function') continue;
+
+        // Handle dangerouslySetInnerHTML (handled in children)
+        if (key === 'dangerouslySetInnerHTML') continue;
+
+        // Boolean attributes
+        if (value === true) {
+            attrs.push(attrName);
+            continue;
+        }
+
+        attrs.push(`${attrName}="${escapeHtml(String(value))}"`);
+    }
+
+    return attrs.length > 0 ? ' ' + attrs.join(' ') : '';
+}
+
+function renderChildren(children: Child | Child[] | undefined): string {
+    if (children == null) return '';
+
+    // Handle dangerouslySetInnerHTML
+    if (typeof children === 'object' && '__html' in (children as any)) {
+        return (children as any).__html;
+    }
+
+    if (Array.isArray(children)) {
+        return children.map(child => renderToString(child as VNode)).join('');
+    }
+
+    return renderToString(children as VNode);
+}
 
 // =============================================================================
 // HOOKS
@@ -667,12 +815,15 @@ function getHook<T extends HookState>(initializer: () => T): T {
  * useState - Reactive state
  */
 export function useState<T>(initial: T | (() => T)): [T, (v: T | ((prev: T) => T)) => void] {
+    // Capture the fiber at hook creation time (during render)
+    const fiber = currentFiber!;
+
     const hook = getHook(() => {
         const value = typeof initial === 'function' ? (initial as () => T)() : initial;
         return { type: 'state' as const, value, setter: null as any };
     });
 
-    // Create setter that triggers re-render
+    // Create setter that triggers re-render using captured fiber
     if (!hook.setter) {
         hook.setter = (newValue: T | ((prev: T) => T)) => {
             const next = typeof newValue === 'function'
@@ -681,7 +832,8 @@ export function useState<T>(initial: T | (() => T)): [T, (v: T | ((prev: T) => T
 
             if (next !== hook.value) {
                 hook.value = next;
-                scheduleUpdate(currentFiber!);
+                // Use captured fiber, not currentFiber (which is null outside render)
+                scheduleUpdate(fiber);
             }
         };
     }
@@ -741,14 +893,41 @@ export function useCallback<T extends Function>(fn: T, deps: any[]): T {
 // =============================================================================
 
 function scheduleUpdate(fiber: Fiber) {
-    // Find root fiber
-    let root = fiber;
-    while (root.parent) root = root.parent;
-
     // Schedule microtask re-render
     queueMicrotask(() => {
-        if (fiber.vnode) {
-            reconcile(fiber, fiber.vnode);
+        if (fiber.vnode && typeof fiber.vnode.type === 'function') {
+            // This is a component fiber - re-render it properly
+            const prevFiber = currentFiber;
+            currentFiber = fiber;
+            fiber.hookIndex = 0;  // Reset hook index for re-render
+
+            // Re-run the component function (hooks will reuse stored state)
+            const result = (fiber.vnode.type as any)(fiber.vnode.props);
+
+            currentFiber = prevFiber;
+
+            // Update the DOM with new result
+            if (fiber.node && fiber.node.parentNode) {
+                const container = fiber.node.parentNode as HTMLElement;
+
+                // Create new DOM from result
+                const newFiber: Fiber = {
+                    node: null,
+                    vnode: result,
+                    hooks: [],
+                    hookIndex: 0,
+                    parent: fiber.parent,
+                    children: [],
+                    cleanup: [],
+                };
+
+                const newNode = createNode(result, newFiber);
+                if (newNode) {
+                    container.replaceChild(newNode, fiber.node);
+                    fiber.node = newNode as HTMLElement;
+                }
+            }
+
             runEffects();
         }
     });
@@ -919,6 +1098,189 @@ function renderChildren(children: Child | Child[] | undefined, parentFiber: Fibe
 }
 
 // =============================================================================
+// SERVER-SIDE RENDERING
+// =============================================================================
+
+// Void elements that don't have closing tags
+const VOID_ELEMENTS = new Set([
+    'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+    'link', 'meta', 'param', 'source', 'track', 'wbr'
+]);
+
+// Map of React-style prop names to HTML attribute names
+const PROP_TO_ATTR: Record<string, string> = {
+    className: 'class',
+    htmlFor: 'for',
+    tabIndex: 'tabindex',
+    readOnly: 'readonly',
+    maxLength: 'maxlength',
+    cellPadding: 'cellpadding',
+    cellSpacing: 'cellspacing',
+    colSpan: 'colspan',
+    rowSpan: 'rowspan',
+    srcSet: 'srcset',
+    useMap: 'usemap',
+    frameBorder: 'frameborder',
+    contentEditable: 'contenteditable',
+    crossOrigin: 'crossorigin',
+    dateTime: 'datetime',
+    encType: 'enctype',
+    formAction: 'formaction',
+    formEncType: 'formenctype',
+    formMethod: 'formmethod',
+    formNoValidate: 'formnovalidate',
+    formTarget: 'formtarget',
+    hrefLang: 'hreflang',
+    inputMode: 'inputmode',
+    noValidate: 'novalidate',
+    playsInline: 'playsinline',
+    autoComplete: 'autocomplete',
+    autoFocus: 'autofocus',
+    autoPlay: 'autoplay',
+};
+
+/**
+ * Escape HTML special characters
+ */
+function escapeHtml(str: string): string {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+/**
+ * Convert a VNode tree to an HTML string (Server-Side Rendering)
+ * This is melina/client's equivalent to react-dom/server.renderToString()
+ */
+export function renderToString(vnode: VNode | Child): string {
+    // Handle null, undefined, booleans
+    if (vnode === null || vnode === undefined || vnode === true || vnode === false) {
+        return '';
+    }
+
+    // Handle primitives (strings, numbers)
+    if (typeof vnode === 'string') {
+        return escapeHtml(vnode);
+    }
+    if (typeof vnode === 'number') {
+        return String(vnode);
+    }
+
+    // Handle arrays
+    if (Array.isArray(vnode)) {
+        return vnode.map(child => renderToString(child)).join('');
+    }
+
+    const { type, props } = vnode as VNode;
+
+    // Handle Fragment
+    if (type === Fragment) {
+        return renderChildrenToString(props.children);
+    }
+
+    // Handle function components
+    if (typeof type === 'function') {
+        // For SSR, we just call the component function
+        // Hooks will work because we set up currentFiber context
+        const fiber: Fiber = {
+            node: null,
+            vnode: vnode as VNode,
+            hooks: [],
+            hookIndex: 0,
+            parent: null,
+            children: [],
+            cleanup: [],
+        };
+
+        const prevFiber = currentFiber;
+        currentFiber = fiber;
+        fiber.hookIndex = 0;
+
+        try {
+            const result = (type as Component)(props);
+            currentFiber = prevFiber;
+            return renderToString(result);
+        } catch (e) {
+            currentFiber = prevFiber;
+            throw e;
+        }
+    }
+
+    // Handle HTML elements
+    const tagName = type as string;
+    let html = `<${tagName}`;
+
+    // Render attributes
+    for (const [key, value] of Object.entries(props)) {
+        if (key === 'children' || key === 'key' || key === 'ref') continue;
+        if (value === undefined || value === null || value === false) continue;
+
+        // Handle dangerouslySetInnerHTML
+        if (key === 'dangerouslySetInnerHTML') continue;
+
+        // Handle style object
+        if (key === 'style' && typeof value === 'object') {
+            const styleStr = Object.entries(value)
+                .map(([k, v]) => {
+                    // Convert camelCase to kebab-case
+                    const prop = k.replace(/([A-Z])/g, '-$1').toLowerCase();
+                    return `${prop}:${v}`;
+                })
+                .join(';');
+            html += ` style="${escapeHtml(styleStr)}"`;
+            continue;
+        }
+
+        // Skip event handlers on server
+        if (key.startsWith('on') && typeof value === 'function') continue;
+
+        // Convert prop name to attribute name
+        const attrName = PROP_TO_ATTR[key] || key.toLowerCase();
+
+        // Boolean attributes
+        if (value === true) {
+            html += ` ${attrName}`;
+        } else {
+            html += ` ${attrName}="${escapeHtml(String(value))}"`;
+        }
+    }
+
+    html += '>';
+
+    // Void elements don't have children or closing tags
+    if (VOID_ELEMENTS.has(tagName)) {
+        return html;
+    }
+
+    // Handle dangerouslySetInnerHTML
+    if (props.dangerouslySetInnerHTML) {
+        html += props.dangerouslySetInnerHTML.__html;
+    } else {
+        // Render children
+        html += renderChildrenToString(props.children);
+    }
+
+    html += `</${tagName}>`;
+    return html;
+}
+
+/**
+ * Render children to string
+ */
+function renderChildrenToString(children: Child | Child[] | undefined): string {
+    if (children === undefined || children === null) return '';
+
+    if (Array.isArray(children)) {
+        return children.map(child => renderToString(child)).join('');
+    }
+
+    return renderToString(children);
+}
+
+// =============================================================================
 // ISLAND SYSTEM (HANGAR ARCHITECTURE)
 // =============================================================================
 
@@ -982,6 +1344,7 @@ async function loadComponent(name: string): Promise<Component<any> | null> {
 
 /**
  * Hydrate all islands in the current DOM
+ * Uses melina/client's render function (React-free!)
  */
 export async function hydrateIslands(): Promise<void> {
     initHangar();
@@ -1017,19 +1380,19 @@ export async function hydrateIslands(): Promise<void> {
                 storageNode.setAttribute('data-storage', instanceId);
                 el.appendChild(storageNode);
 
-                // Render component into storage node
-                const vnode = createElement(Component, props);
-                const fiber = render(vnode, storageNode);
+                // Render component using melina's render function (React-free!)
+                const vnode = createElement(Component as any, props);
+                render(vnode, storageNode);
 
                 islandRegistry.set(instanceId, {
                     name,
                     Component,
                     props,
-                    fiber,
+                    fiber: null as any,
                     storageNode,
                 });
 
-                console.log('[Melina Client] Created island:', instanceId);
+                console.log('[Melina Client] Hydrated island:', instanceId);
             }
         }
     }
@@ -1100,7 +1463,7 @@ export async function navigate(href: string): Promise<void> {
     // Update URL
     window.history.pushState({}, '', href);
 
-    // DOM update function
+    // DOM update function - optimized with DocumentFragment for minimal reflow
     const performUpdate = () => {
         // Dispatch navigation event (for island state updates)
         window.dispatchEvent(new CustomEvent('melina:navigation-start', {
@@ -1108,10 +1471,41 @@ export async function navigate(href: string): Promise<void> {
         }));
 
         document.title = newDoc.title;
-        document.body.innerHTML = newDoc.body.innerHTML;
 
-        // Sync existing islands immediately
-        syncIslands();
+        // OPTIMIZATION: Build new body off-screen using DocumentFragment
+        // This minimizes layout thrashing by preparing everything before touching DOM
+
+        // 1. Create a DocumentFragment with all new children
+        const fragment = document.createDocumentFragment();
+
+        // 2. Move all children from newDoc.body to fragment (off-screen)
+        while (newDoc.body.firstChild) {
+            fragment.appendChild(newDoc.body.firstChild);
+        }
+
+        // 3. Find island placeholders in the fragment and pre-insert storage nodes
+        //    This happens OFF-SCREEN, no reflow triggered
+        const placeholders = fragment.querySelectorAll('[data-melina-island]');
+        for (let i = 0; i < placeholders.length; i++) {
+            const el = placeholders[i] as HTMLElement;
+            const name = el.getAttribute('data-melina-island');
+            if (!name) continue;
+
+            const instanceId = el.getAttribute('data-instance') || `${name}-${i}`;
+            const existing = islandRegistry.get(instanceId);
+
+            if (existing) {
+                // Pre-insert storage node into fragment (still off-screen)
+                const propsStr = (el.getAttribute('data-props') || '{}').replace(/&quot;/g, '"');
+                existing.props = JSON.parse(propsStr);
+                el.appendChild(existing.storageNode);
+            }
+        }
+
+        // 4. SINGLE REFLOW: Clear body and append prepared fragment
+        //    All island storage nodes are already in place
+        document.body.replaceChildren(fragment);
+
         window.scrollTo(0, 0);
     };
 
@@ -1123,7 +1517,7 @@ export async function navigate(href: string): Promise<void> {
         performUpdate();
     }
 
-    // Hydrate new islands
+    // Hydrate new islands (ones that weren't in registry)
     await hydrateIslands();
 
     console.log('[Melina Client] Navigation complete');
@@ -1241,8 +1635,32 @@ export async function init(): Promise<void> {
             const newDoc = new DOMParser().parseFromString(html, 'text/html');
 
             document.title = newDoc.title;
-            document.body.innerHTML = newDoc.body.innerHTML;
-            syncIslands();
+
+            // OPTIMIZATION: Build off-screen with DocumentFragment
+            const fragment = document.createDocumentFragment();
+            while (newDoc.body.firstChild) {
+                fragment.appendChild(newDoc.body.firstChild);
+            }
+
+            // Pre-insert islands into fragment (off-screen)
+            const placeholders = fragment.querySelectorAll('[data-melina-island]');
+            for (let i = 0; i < placeholders.length; i++) {
+                const el = placeholders[i] as HTMLElement;
+                const name = el.getAttribute('data-melina-island');
+                if (!name) continue;
+
+                const instanceId = el.getAttribute('data-instance') || `${name}-${i}`;
+                const existing = islandRegistry.get(instanceId);
+
+                if (existing) {
+                    const propsStr = (el.getAttribute('data-props') || '{}').replace(/&quot;/g, '"');
+                    existing.props = JSON.parse(propsStr);
+                    el.appendChild(existing.storageNode);
+                }
+            }
+
+            // Single reflow: swap prepared fragment
+            document.body.replaceChildren(fragment);
         };
 
         if (document.startViewTransition) {

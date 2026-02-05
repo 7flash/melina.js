@@ -34,11 +34,9 @@ export interface RouteMatch {
  *   app/blog/[year]/[month]/page.tsx -> /blog/:year/:month
  */
 function filePathToPattern(filePath: string, appDir: string): { pattern: string; paramNames: string[] } {
-    // Remove appDir prefix and get relative path
-    let relativePath = path.relative(appDir, filePath);
-    // WINDOWS FIX: Normalize all backslashes to forward slashes FIRST
-    relativePath = relativePath.split(path.sep).join('/');
-    // Remove page.tsx/page.ts or route.ts suffix (now using forward slash only)
+    // Remove appDir prefix and page.tsx/page.ts suffix
+    let relativePath = path.relative(appDir, filePath).split(path.sep).join('/');
+    // Remove page.tsx/page.ts or route.ts suffix
     relativePath = relativePath.replace(/(^|\/)(page|route)\.(tsx?|jsx?)$/, '');
 
     // Handle root page

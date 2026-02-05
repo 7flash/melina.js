@@ -1,12 +1,13 @@
 import path from 'path';
 import { serve, spa } from "../../src/web";
+import { measure } from '@ments/utils';
 
 const { port } = await serve(async (req: Request, measure) => {
   const url = new URL(req.url);
-  
+
   if (url.pathname === '/') {
     try {
-      return new Response(await spa
+      return new Response(await spa({
         entrypoint: path.join(__dirname, './App.client.tsx'),
         stylePath: path.join(__dirname, './App.css'),
         title: "Melina + React",
@@ -27,13 +28,13 @@ const { port } = await serve(async (req: Request, measure) => {
         }
       });
     } catch (error) {
-      console.error('Frontend App Error:', error);
+      measure(() => `Frontend App Error: ${error}`, 'Error');
       return new Response(`<html><body><h1>Error: ${error.message}</h1></body></html>`, {
         headers: { 'Content-Type': 'text/html' }
       });
     }
   }
-  
+
   // Add other routes or API endpoints here
   if (url.pathname === '/api/hello') {
     return Response.json({ message: "Hello from API" });
@@ -41,4 +42,4 @@ const { port } = await serve(async (req: Request, measure) => {
   return new Response('Not Found', { status: 404 });
 }, { port: process.env.CUSTOM_PORT || process.env.BUN_PORT });
 
-console.log("React example server running. Open http://localhost:" + port);
+measure(() => "React example server running. Open http://localhost:" + port, 'Server');

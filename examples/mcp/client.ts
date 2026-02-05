@@ -1,5 +1,6 @@
 // Simple MCP client for testing
 import { randomUUID } from "crypto";
+import { measure } from '@ments/utils';
 
 const SERVER_URL = "http://localhost:3000/mcp";
 
@@ -12,9 +13,9 @@ async function sendRequest(method: string, params?: any) {
     method,
     params
   };
-  
-  console.log(`Sending request: ${JSON.stringify(request, null, 2)}`);
-  
+
+  measure(() => `Sending request: ${JSON.stringify(request, null, 2)}`, 'MCP Request');
+
   const response = await fetch(SERVER_URL, {
     method: "POST",
     headers: {
@@ -23,18 +24,18 @@ async function sendRequest(method: string, params?: any) {
     },
     body: JSON.stringify(request)
   });
-  
+
   if (!response.ok) {
     throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
   }
-  
+
   if (response.status === 202) {
-    console.log("Server accepted notification (202)");
+    measure(() => "Server accepted notification (202)", 'MCP Notification');
     return null;
   }
-  
+
   const data = await response.json();
-  console.log(`Received response: ${JSON.stringify(data, null, 2)}`);
+  measure(() => `Received response: ${JSON.stringify(data, null, 2)}`, 'MCP Response');
   return data.result;
 }
 
@@ -45,9 +46,9 @@ async function sendNotification(method: string, params?: any) {
     method,
     params
   };
-  
-  console.log(`Sending notification: ${JSON.stringify(notification, null, 2)}`);
-  
+
+  measure(() => `Sending notification: ${JSON.stringify(notification, null, 2)}`, 'MCP Notification');
+
   const response = await fetch(SERVER_URL, {
     method: "POST",
     headers: {
@@ -56,19 +57,19 @@ async function sendNotification(method: string, params?: any) {
     },
     body: JSON.stringify(notification)
   });
-  
+
   if (!response.ok) {
     throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
   }
-  
-  console.log(`Notification accepted (${response.status})`);
+
+  measure(() => `Notification accepted (${response.status})`, 'MCP Notification');
 }
 
 // Run a test sequence
 async function runTest() {
   try {
     // Initialize
-    console.log("--- Initializing MCP connection ---");
+    measure(() => "--- Initializing MCP connection ---", 'MCP Test');
     const initResult = await sendRequest("initialize", {
       protocolVersion: "2024-11-05",
       capabilities: {},
@@ -77,55 +78,55 @@ async function runTest() {
         version: "1.0.0"
       }
     });
-    
-    console.log("--- Sending initialized notification ---");
+
+    measure(() => "--- Sending initialized notification ---", 'MCP Test');
     await sendNotification("notifications/initialized");
-    
+
     // List tools
-    console.log("\n--- Listing available tools ---");
+    measure(() => "\n--- Listing available tools ---", 'MCP Test');
     const toolsResult = await sendRequest("tools/list");
-    
+
     // Call a tool
-    console.log("\n--- Calling weather tool ---");
+    measure(() => "\n--- Calling weather tool ---", 'MCP Test');
     const toolResult = await sendRequest("tools/call", {
       name: "get_weather",
       arguments: {
         location: "San Francisco"
       }
     });
-    
+
     // List prompts
-    console.log("\n--- Listing available prompts ---");
+    measure(() => "\n--- Listing available prompts ---", 'MCP Test');
     const promptsResult = await sendRequest("prompts/list");
-    
+
     // Get a prompt
-    console.log("\n--- Getting greeting prompt ---");
+    measure(() => "\n--- Getting greeting prompt ---", 'MCP Test');
     const promptResult = await sendRequest("prompts/get", {
       name: "greeting-template",
       arguments: {
         name: "Claude"
       }
     });
-    
+
     // List resources
-    console.log("\n--- Listing available resources ---");
+    measure(() => "\n--- Listing available resources ---", 'MCP Test');
     const resourcesResult = await sendRequest("resources/list");
-    
+
     // Read a resource
-    console.log("\n--- Reading a resource ---");
+    measure(() => "\n--- Reading a resource ---", 'MCP Test');
     const resourceResult = await sendRequest("resources/read", {
       uri: "https://example.com/documentation/overview"
     });
-    
+
     // Read a template resource
-    console.log("\n--- Reading a template resource ---");
+    measure(() => "\n--- Reading a template resource ---", 'MCP Test');
     const templateResourceResult = await sendRequest("resources/read", {
       uri: "https://example.com/users/1"
     });
-    
-    console.log("\n--- Test completed successfully ---");
+
+    measure(() => "\n--- Test completed successfully ---", 'MCP Test');
   } catch (error) {
-    console.error("Test failed:", error);
+    measure(() => `Test failed: ${error}`, 'MCP Test Error');
   }
 }
 

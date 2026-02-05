@@ -44,11 +44,11 @@ function getIslandMeta(): Record<string, string> {
 
 // Collect all island placeholders from the DOM
 function collectIslandPlaceholders(): IslandConfig[] {
-    const elements = document.querySelectorAll('[data-melina-island]');
+    const elements = document.querySelectorAll('[data-island]');
     const islands: IslandConfig[] = [];
 
     elements.forEach((el, index) => {
-        const name = el.getAttribute('data-melina-island');
+        const name = el.getAttribute('data-island');
         if (!name) return;
 
         const propsStr = (el.getAttribute('data-props') || '{}').replace(/&quot;/g, '"');

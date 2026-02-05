@@ -57,4 +57,4 @@ const { port } = await serve(async (req: Request) => {
   return new Response('Not Found', { status: 404 });
 });
 
-console.log("React example server running. Open http://localhost:" + port);
+
