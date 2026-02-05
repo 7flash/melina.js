@@ -24,7 +24,7 @@ import { discoverRoutes, matchRoute, type Route, type RouteMatch } from "./route
  */
 const ISLAND_HELPER = `
 // [Melina.js] Auto-injected island wrapper
-import { createElement as __melina_h__ } from 'melina/client';
+import * as __React__ from 'react';
 const __MELINA_IS_SERVER__ = typeof window === 'undefined' && typeof Bun !== 'undefined';
 function __melina_wrap__(Component, name) {
     if (__MELINA_IS_SERVER__) {
@@ -34,7 +34,7 @@ function __melina_wrap__(Component, name) {
             // Filter out internal props before serializing
             const { _melinaInstance, ...restProps } = props || {};
             const propsJson = JSON.stringify(restProps || {}).replace(/"/g, '&quot;');
-            return __melina_h__('div', {
+            return __React__.createElement('div', {
                 'data-melina-island': name,
                 'data-instance': instanceId,
                 'data-props': propsJson,
@@ -445,10 +445,10 @@ let cachedRuntimePath: string | null = null;
 
 /**
  * Build the Melina client runtime from TypeScript source
- * This bundles src/client.ts and serves it from memory
+ * This bundles src/runtime/navigation.tsx and serves it from memory
  * 
- * The client runtime is React-free - it uses melina/client's lightweight VDOM.
- * SSR uses React on the server, but the browser only loads melina/client.
+ * The client runtime is React-based - it uses html-react-parser for VDOM reconciliation.
+ * SSR uses React on the server, and the browser uses React for hydration.
  */
 async function buildRuntime(): Promise<string> {
   // Return cached path if available
@@ -457,7 +457,7 @@ async function buildRuntime(): Promise<string> {
   }
 
   // Find the runtime source file (in the package, not the user's app)
-  const runtimePath = path.resolve(__dirname, './client.ts');
+  const runtimePath = path.resolve(__dirname, './runtime/navigation.tsx');
 
   if (!existsSync(runtimePath)) {
     throw new Error(`Melina runtime not found at: ${runtimePath}`);
@@ -1203,11 +1203,12 @@ export async function renderPage(options: RenderPageOptions): Promise<string> {
   //Server-side render the component
   let serverHtml = '';
   try {
-    // Import melina/client for SSR (React-free)
-    const { createElement, renderToString } = await import('./client');
+    // Import React for SSR
+    const React = await import('react');
+    const ReactDOMServer = await import('react-dom/server');
 
-    serverHtml = renderToString(
-      createElement(Component, { ...props, params })
+    serverHtml = ReactDOMServer.renderToString(
+      React.createElement(Component, { ...props, params })
     );
   } catch (error) {
     console.warn('SSR failed, will use client-side rendering only:', error);
@@ -1349,11 +1350,12 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
         throw new Error(`No default export found in ${match.route.filePath}`);
       }
 
-      // Import melina/client for SSR (React-free)
-      const { createElement, renderToString } = await import('./client');
+      // Import React for SSR
+      const React = await import('react');
+      const ReactDOMServer = await import('react-dom/server');
 
       // Build the component tree with nested layouts
-      let tree = createElement(PageComponent, { params: match.params });
+      let tree: any = React.createElement(PageComponent, { params: match.params });
 
       // Wrap with layouts (innermost to outermost)
       for (let i = match.route.layouts.length - 1; i >= 0; i--) {
@@ -1362,12 +1364,12 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
         const LayoutComponent = layoutModule.default;
 
         if (LayoutComponent) {
-          tree = createElement(LayoutComponent, { children: tree });
+          tree = React.createElement(LayoutComponent, { children: tree });
         }
       }
 
       // Render to HTML
-      const html = renderToString(tree);
+      const html = ReactDOMServer.renderToString(tree);
 
       // Build CSS
       let stylesVirtualPath = '';
