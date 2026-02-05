@@ -1,6 +1,6 @@
 {
   "name": "melina",
-  "version": "1.0.2",
+  "version": "1.0.7",
   "description": "A lightweight, islands-architecture web framework for Bun with Next.js-style routing.",
   "module": "./src/web.ts",
   "main": "./src/web.ts",
