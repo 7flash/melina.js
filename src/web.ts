@@ -450,10 +450,12 @@ let cachedRuntimePath: string | null = null;
 
 /**
  * Build the Melina client runtime from TypeScript source
- * This bundles src/client.ts and serves it from memory
+ * This bundles src/runtime.ts and serves it from memory
  * 
- * The client runtime handles island hydration using React.
- * SSR uses React on the server, and the browser uses React for hydration.
+ * The runtime handles:
+ * - Island hydration (one React root per island)
+ * - Client-side navigation with View Transitions
+ * - Link interception
  */
 async function buildRuntime(): Promise<string> {
   // Return cached path if available

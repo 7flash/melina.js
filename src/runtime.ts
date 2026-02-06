@@ -1,13 +1,156 @@
 /**
  * Melina.js Client-Side Runtime
  * 
- * Single bundle that handles:
- * 1. Island Orchestrator initialization (single React root + portals)
+ * Simplified architecture:
+ * 1. One React root per island (no portals needed)
  * 2. Client-side navigation with View Transitions
  * 3. Link interception
  * 
  * This is the ONLY client-side script needed - no per-island boilerplate.
  */
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+interface IslandRoot {
+    name: string;
+    element: HTMLElement;
+    root: any; // ReactDOM root
+    Component: React.ComponentType<any>;
+    props: Record<string, any>;
+}
+
+// Global registry of active island roots
+const islandRoots = new Map<HTMLElement, IslandRoot>();
+
+// Component cache - shared across all islands
+const componentCache: Record<string, React.ComponentType<any>> = {};
+
+// ============================================================================
+// ISLAND META
+// ============================================================================
+
+function getIslandMeta(): Record<string, string> {
+    const metaEl = document.getElementById('__MELINA_META__');
+    if (!metaEl) return {};
+    try {
+        return JSON.parse(metaEl.textContent || '{}');
+    } catch {
+        return {};
+    }
+}
+
+// ============================================================================
+// COMPONENT LOADING
+// ============================================================================
+
+async function loadComponent(name: string): Promise<React.ComponentType<any> | null> {
+    // Check cache first
+    if (componentCache[name]) {
+        return componentCache[name];
+    }
+
+    const meta = getIslandMeta();
+    const bundlePath = meta[name];
+
+    if (!bundlePath) {
+        console.warn(`[Melina] No bundle found for island: ${name}`);
+        return null;
+    }
+
+    try {
+        const module = await import(/* @vite-ignore */ bundlePath);
+        // Try named export first, then default
+        const Component = module[name] || module.default;
+
+        if (Component) {
+            componentCache[name] = Component;
+            console.log(`[Melina] Loaded component: ${name}`);
+            return Component;
+        } else {
+            console.warn(`[Melina] No export found for component: ${name}`);
+            return null;
+        }
+    } catch (e) {
+        console.error(`[Melina] Failed to load component ${name}:`, e);
+        return null;
+    }
+}
+
+// ============================================================================
+// ISLAND HYDRATION
+// ============================================================================
+
+async function hydrateIslands() {
+    const React = await import('react');
+    const ReactDOM = await import('react-dom/client');
+
+    // Find all island placeholders
+    const placeholders = document.querySelectorAll('[data-melina-island]');
+
+    // Filter to only top-level islands (not nested inside already-hydrated islands)
+    const topLevelIslands: HTMLElement[] = [];
+
+    placeholders.forEach((el) => {
+        const htmlEl = el as HTMLElement;
+
+        // Skip if already hydrated
+        if (htmlEl.hasAttribute('data-hydrated')) return;
+
+        // Skip if nested inside another island placeholder
+        let parent = htmlEl.parentElement;
+        let isNested = false;
+        while (parent) {
+            if (parent.hasAttribute('data-melina-island')) {
+                isNested = true;
+                break;
+            }
+            parent = parent.parentElement;
+        }
+
+        if (!isNested) {
+            topLevelIslands.push(htmlEl);
+        }
+    });
+
+    // Hydrate each top-level island
+    for (const element of topLevelIslands) {
+        const name = element.getAttribute('data-melina-island');
+        if (!name) continue;
+
+        // Parse props
+        const propsStr = (element.getAttribute('data-props') || '{}').replace(/&quot;/g, '"');
+        let props: Record<string, any> = {};
+        try {
+            props = JSON.parse(propsStr);
+        } catch (e) {
+            console.warn(`[Melina] Invalid props for island ${name}:`, e);
+        }
+
+        // Load component
+        const Component = await loadComponent(name);
+        if (!Component) continue;
+
+        // Create React root and render (we SSR placeholders only, not component content)
+        const root = ReactDOM.createRoot(element);
+        root.render(React.createElement(Component, props));
+
+        // Mark as hydrated
+        element.setAttribute('data-hydrated', 'true');
+
+        // Store in registry for updates
+        islandRoots.set(element, {
+            name,
+            element,
+            root,
+            Component,
+            props
+        });
+    }
+
+    console.log(`[Melina] Hydrated ${topLevelIslands.length} islands`);
+}
 
 // ============================================================================
 // NAVIGATION
@@ -19,6 +162,11 @@ async function navigate(href: string) {
 
     // Skip if same page
     if (fromPath === toPath) return;
+
+    // Dispatch navigation start event (for islands to react synchronously)
+    window.dispatchEvent(new CustomEvent('melina:navigation-start', {
+        detail: { from: fromPath, to: toPath }
+    }));
 
     // Update URL immediately
     window.history.pushState({}, '', href);
@@ -34,19 +182,12 @@ async function navigate(href: string) {
         const parser = new DOMParser();
         const newDoc = parser.parseFromString(htmlText, 'text/html');
 
-        // DOM update function - runs inside View Transition callback
+        // DOM update function
         const updateDOM = () => {
-            // Dispatch navigation-start INSIDE transition callback
-            // This lets islands update synchronously for view transition snapshot
-            window.dispatchEvent(new CustomEvent('melina:navigation-start', {
-                detail: { from: fromPath, to: toPath }
-            }));
-
             // Update title
             document.title = newDoc.title;
 
-            // PARTIAL SWAP: Only replace #melina-page-content
-            // Islands container (#melina-islands) is OUTSIDE, so React root persists
+            // Update page content
             const currentContent = document.getElementById('melina-page-content');
             const newContent = newDoc.getElementById('melina-page-content');
 
@@ -54,16 +195,12 @@ async function navigate(href: string) {
                 currentContent.innerHTML = newContent.innerHTML;
                 console.log(`[Melina] Navigation ${fromPath} → ${toPath}`);
             } else {
-                // Fallback: full body swap (but try to preserve islands container)
-                const islandsContainer = document.getElementById('melina-islands');
+                // Fallback: full body swap
                 document.body.innerHTML = newDoc.body.innerHTML;
-                if (islandsContainer) {
-                    document.body.insertBefore(islandsContainer, document.body.firstChild);
-                }
                 console.log('[Melina] Full body swap (fallback)');
             }
 
-            // Update island meta if present in new page
+            // Update island meta
             const newMeta = newDoc.getElementById('__MELINA_META__');
             const currentMeta = document.getElementById('__MELINA_META__');
             if (newMeta && currentMeta) {
@@ -80,23 +217,24 @@ async function navigate(href: string) {
                 updateDOM();
             });
 
-            // After transition completes, notify islands to re-scan
+            // After transition, hydrate any new islands
             transition.finished.then(() => {
+                hydrateIslands();
                 window.dispatchEvent(new CustomEvent('melina:navigated'));
             });
         } else {
             updateDOM();
+            hydrateIslands();
             window.dispatchEvent(new CustomEvent('melina:navigated'));
         }
 
     } catch (error) {
         console.error('[Melina] Navigation failed:', error);
-        // Fallback to full page load
         window.location.href = href;
     }
 }
 
-// Expose navigate globally for programmatic use
+// Expose navigate globally
 (window as any).melinaNavigate = navigate;
 
 // ============================================================================
@@ -127,10 +265,8 @@ function initializeLinkInterception() {
 
     // Handle back/forward buttons
     window.addEventListener('popstate', () => {
-        // On popstate, we need to fetch and render the page for the current URL
         const href = window.location.pathname + window.location.search;
 
-        // Don't use navigate() since history is already updated
         fetch(href, { headers: { 'X-Melina-Nav': '1' } })
             .then(res => res.text())
             .then(htmlText => {
@@ -154,10 +290,12 @@ function initializeLinkInterception() {
 
                 if (document.startViewTransition) {
                     document.startViewTransition(() => updateDOM()).finished.then(() => {
+                        hydrateIslands();
                         window.dispatchEvent(new CustomEvent('melina:navigated'));
                     });
                 } else {
                     updateDOM();
+                    hydrateIslands();
                     window.dispatchEvent(new CustomEvent('melina:navigated'));
                 }
             })
@@ -171,46 +309,17 @@ function initializeLinkInterception() {
 }
 
 // ============================================================================
-// ISLAND ORCHESTRATOR INITIALIZATION
-// ============================================================================
-
-async function initializeOrchestrator() {
-    const React = await import('react');
-    const { createRoot } = await import('react-dom/client');
-
-    // Create container if it doesn't exist
-    let container = document.getElementById('melina-islands');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'melina-islands';
-        container.style.display = 'contents'; // Won't affect layout
-        document.body.insertBefore(container, document.body.firstChild);
-    }
-
-    // Import and instantiate the orchestrator
-    const { IslandOrchestrator } = await import('./IslandOrchestrator');
-
-    // Create single React root
-    const root = createRoot(container);
-    root.render(React.createElement(IslandOrchestrator));
-
-    console.log('[Melina] Island Orchestrator initialized');
-
-    return root;
-}
-
-// ============================================================================
 // BOOTSTRAP
 // ============================================================================
 
 async function bootstrap() {
-    // Initialize link interception first (synchronous)
+    // Initialize link interception
     initializeLinkInterception();
 
-    // Then initialize the Island Orchestrator (async)
-    await initializeOrchestrator();
+    // Hydrate all islands on initial page load
+    await hydrateIslands();
 
-    console.log('[Melina] Runtime ready (Single Root + Portals architecture)');
+    console.log('[Melina] Runtime ready');
 }
 
 // Run on DOM ready
@@ -220,4 +329,4 @@ if (document.readyState === 'loading') {
     bootstrap();
 }
 
-export { navigate, initializeOrchestrator };
+export { navigate, hydrateIslands };
