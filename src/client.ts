@@ -684,6 +684,115 @@ export function jsxDEV(
 }
 
 // =============================================================================
+// SERVER-SIDE RENDERING
+// =============================================================================
+
+/**
+ * Render a VNode tree to an HTML string (SSR)
+ * This is the React-free equivalent of ReactDOMServer.renderToString()
+ */
+export function renderToString(vnode: VNode | string | number | boolean | null | undefined): string {
+    if (vnode == null || typeof vnode === 'boolean') {
+        return '';
+    }
+
+    if (typeof vnode === 'string') {
+        return escapeHtml(vnode);
+    }
+
+    if (typeof vnode === 'number') {
+        return String(vnode);
+    }
+
+    const { type, props } = vnode;
+
+    // Handle Fragment
+    if (type === Fragment) {
+        return renderChildren(props.children);
+    }
+
+    // Handle function components
+    if (typeof type === 'function') {
+        const result = type(props);
+        return renderToString(result);
+    }
+
+    // Handle HTML elements
+    const tagName = type as string;
+    const attrs = renderAttributes(props);
+    const children = renderChildren(props.children);
+
+    // Void elements (self-closing)
+    const voidElements = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'];
+    if (voidElements.includes(tagName)) {
+        return `<${tagName}${attrs}>`;
+    }
+
+    return `<${tagName}${attrs}>${children}</${tagName}>`;
+}
+
+function escapeHtml(str: string): string {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function renderAttributes(props: Props): string {
+    const attrs: string[] = [];
+
+    for (const [key, value] of Object.entries(props)) {
+        if (key === 'children' || key === 'key' || key === 'ref') continue;
+        if (value == null || value === false) continue;
+
+        // Handle className -> class
+        const attrName = key === 'className' ? 'class' : key;
+
+        // Handle style object
+        if (key === 'style' && typeof value === 'object') {
+            const styleStr = Object.entries(value)
+                .map(([k, v]) => `${k.replace(/([A-Z])/g, '-$1').toLowerCase()}:${v}`)
+                .join(';');
+            attrs.push(`style="${escapeHtml(styleStr)}"`);
+            continue;
+        }
+
+        // Handle event handlers (skip on server)
+        if (key.startsWith('on') && typeof value === 'function') continue;
+
+        // Handle dangerouslySetInnerHTML (handled in children)
+        if (key === 'dangerouslySetInnerHTML') continue;
+
+        // Boolean attributes
+        if (value === true) {
+            attrs.push(attrName);
+            continue;
+        }
+
+        attrs.push(`${attrName}="${escapeHtml(String(value))}"`);
+    }
+
+    return attrs.length > 0 ? ' ' + attrs.join(' ') : '';
+}
+
+function renderChildren(children: Child | Child[] | undefined): string {
+    if (children == null) return '';
+
+    // Handle dangerouslySetInnerHTML
+    if (typeof children === 'object' && '__html' in (children as any)) {
+        return (children as any).__html;
+    }
+
+    if (Array.isArray(children)) {
+        return children.map(child => renderToString(child as VNode)).join('');
+    }
+
+    return renderToString(children as VNode);
+}
+
+// =============================================================================
 // HOOKS
 // =============================================================================
 
@@ -706,12 +815,15 @@ function getHook<T extends HookState>(initializer: () => T): T {
  * useState - Reactive state
  */
 export function useState<T>(initial: T | (() => T)): [T, (v: T | ((prev: T) => T)) => void] {
+    // Capture the fiber at hook creation time (during render)
+    const fiber = currentFiber!;
+
     const hook = getHook(() => {
         const value = typeof initial === 'function' ? (initial as () => T)() : initial;
         return { type: 'state' as const, value, setter: null as any };
     });
 
-    // Create setter that triggers re-render
+    // Create setter that triggers re-render using captured fiber
     if (!hook.setter) {
         hook.setter = (newValue: T | ((prev: T) => T)) => {
             const next = typeof newValue === 'function'
@@ -720,7 +832,8 @@ export function useState<T>(initial: T | (() => T)): [T, (v: T | ((prev: T) => T
 
             if (next !== hook.value) {
                 hook.value = next;
-                scheduleUpdate(currentFiber!);
+                // Use captured fiber, not currentFiber (which is null outside render)
+                scheduleUpdate(fiber);
             }
         };
     }
@@ -780,14 +893,41 @@ export function useCallback<T extends Function>(fn: T, deps: any[]): T {
 // =============================================================================
 
 function scheduleUpdate(fiber: Fiber) {
-    // Find root fiber
-    let root = fiber;
-    while (root.parent) root = root.parent;
-
     // Schedule microtask re-render
     queueMicrotask(() => {
-        if (fiber.vnode) {
-            reconcile(fiber, fiber.vnode);
+        if (fiber.vnode && typeof fiber.vnode.type === 'function') {
+            // This is a component fiber - re-render it properly
+            const prevFiber = currentFiber;
+            currentFiber = fiber;
+            fiber.hookIndex = 0;  // Reset hook index for re-render
+
+            // Re-run the component function (hooks will reuse stored state)
+            const result = (fiber.vnode.type as any)(fiber.vnode.props);
+
+            currentFiber = prevFiber;
+
+            // Update the DOM with new result
+            if (fiber.node && fiber.node.parentNode) {
+                const container = fiber.node.parentNode as HTMLElement;
+
+                // Create new DOM from result
+                const newFiber: Fiber = {
+                    node: null,
+                    vnode: result,
+                    hooks: [],
+                    hookIndex: 0,
+                    parent: fiber.parent,
+                    children: [],
+                    cleanup: [],
+                };
+
+                const newNode = createNode(result, newFiber);
+                if (newNode) {
+                    container.replaceChild(newNode, fiber.node);
+                    fiber.node = newNode as HTMLElement;
+                }
+            }
+
             runEffects();
         }
     });
@@ -1204,6 +1344,7 @@ async function loadComponent(name: string): Promise<Component<any> | null> {
 
 /**
  * Hydrate all islands in the current DOM
+ * Uses melina/client's render function (React-free!)
  */
 export async function hydrateIslands(): Promise<void> {
     initHangar();
@@ -1239,19 +1380,19 @@ export async function hydrateIslands(): Promise<void> {
                 storageNode.setAttribute('data-storage', instanceId);
                 el.appendChild(storageNode);
 
-                // Render component into storage node
-                const vnode = createElement(Component, props);
-                const fiber = render(vnode, storageNode);
+                // Render component using melina's render function (React-free!)
+                const vnode = createElement(Component as any, props);
+                render(vnode, storageNode);
 
                 islandRegistry.set(instanceId, {
                     name,
                     Component,
                     props,
-                    fiber,
+                    fiber: null as any,
                     storageNode,
                 });
 
-                console.log('[Melina Client] Created island:', instanceId);
+                console.log('[Melina Client] Hydrated island:', instanceId);
             }
         }
     }

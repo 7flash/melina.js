@@ -246,7 +246,7 @@ export default function Messenger({ }: MessengerProps) {
     // Full-page mode renders the messenger as the main content
     if (isFullPage) {
         return (
-            <div className="messenger-fullpage">
+            <div className="messenger-fullpage" style={{ viewTransitionName: 'messenger' }}>
                 <div className="messenger-fullpage-header">
                     <a href="/" className="back-link">← Back to Feed</a>
                     <h1>Messages</h1>
@@ -348,9 +348,8 @@ export default function Messenger({ }: MessengerProps) {
         );
     }
 
-    // Widget mode (default) - floating messenger
     return (
-        <div className="messenger">
+        <div className="messenger" style={{ viewTransitionName: 'messenger' }}>
             {/* Messenger Panel */}
             {isOpen && (
                 <div className="messenger-panel">
