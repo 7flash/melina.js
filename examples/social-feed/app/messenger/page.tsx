@@ -1,11 +1,16 @@
 /**
- * Full Messenger Page
+ * Messenger Page — Server Component
  * 
- * This page renders nothing itself - the Messenger island from root layout
- * detects when we're on /messenger and switches to full-page mode.
- * This preserves state across the widget → full-page transition.
+ * Renders the messenger UI structure. 
+ * Client interactivity would be in messenger/page.client.tsx
  */
+import React from 'react';
 
 export default function MessengerPage() {
-    return null; // Messenger island handles rendering based on route
+    return (
+        <div className="messenger-container" style={{ padding: '2rem' }}>
+            <h1>Messenger</h1>
+            <p style={{ color: 'var(--text-muted)' }}>Coming soon — messaging will be implemented with a page.client.tsx mount script.</p>
+        </div>
+    );
 }

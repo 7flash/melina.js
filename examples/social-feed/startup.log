@@ -1,0 +1,39 @@
+ЁЯжК [Melina] Ready
+ЁЯжК Starting Melina server...
+ЁЯУБ Discovered 4 routes:
+   тЪб /api/messages -> app\api\messages\route.ts
+   ЁЯУД /messenger -> app\messenger\page.tsx (1 layouts)
+   ЁЯУД / -> app\page.tsx (1 layouts)
+   ЁЯУД /post/:id -> app\post\[id]\page.tsx (1 layouts)
+ЁЯУД Found global CSS: app\globals.css
+ЁЯжК Melina server running at http://localhost:3333
+> [4fj7kbsm] GET http://localhost:3333/ (iid68q)
+Browserslist: browsers data (caniuse-lite) is 9 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+ЁЯУж [Melina] Client script built: page.client.tsx -> /page.client-225v776s.js
+ЁЯжК [Melina] Runtime bundled: /melina-runtime-p48tzs2j.js
+< [4fj7kbsm][iid68q] тЬУ 482.87ms
+> [v340klx2] GET http://localhost:3333/melina-runtime-p48tzs2j.js (ws9517)
+< [v340klx2][ws9517] тЬУ 0.10ms
+> [hekv897q] GET http://localhost:3333/globals-1ee6acca.css (g7ccyy)
+< [hekv897q][g7ccyy] тЬУ 0.04ms
+> [mks02adh] GET http://localhost:3333/page.client-225v776s.js (s611u1)
+< [mks02adh][s611u1] тЬУ 0.09ms
+> [l068q05b] GET http://localhost:3333/ (s7uaer)
+ЁЯУж [Melina] Client script built: page.client.tsx -> /page.client-225v776s.js
+ЁЯжК [Melina] Runtime bundled: /melina-runtime-p48tzs2j.js
+< [l068q05b][s7uaer] тЬУ 30.82ms
+> [qix2fcqv] GET http://localhost:3333/globals-1ee6acca.css (vkgz9c)
+< [qix2fcqv][vkgz9c] тЬУ 0.10ms
+> [6a9pdorj] GET http://localhost:3333/melina-runtime-p48tzs2j.js (1gfrtf)
+< [6a9pdorj][1gfrtf] тЬУ 0.03ms
+> [p47aeaz5] GET http://localhost:3333/page.client-225v776s.js (tw1hfp)
+< [p47aeaz5][tw1hfp] тЬУ 0.08ms
+> [melutv5q] GET http://localhost:3333/post/1 (0ryya1)
+ЁЯжК [Melina] Runtime bundled: /melina-runtime-p48tzs2j.js
+< [melutv5q][0ryya1] тЬУ 25.81ms
+> [gqy0y59s] GET http://localhost:3333/ (ydqard)
+ЁЯУж [Melina] Client script built: page.client.tsx -> /page.client-225v776s.js
+ЁЯжК [Melina] Runtime bundled: /melina-runtime-p48tzs2j.js
+< [gqy0y59s][ydqard] тЬУ 31.70ms

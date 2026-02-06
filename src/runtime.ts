@@ -1,70 +1,56 @@
 /**
- * Melina.js Client-Side Runtime
+ * Melina.js Client Runtime
  * 
- * Single root hydration:
- * 1. Server renders full page as React
- * 2. Client hydrates the page content once
- * 3. Client-side navigation with View Transitions
- * 
- * This is the ONLY client-side script needed.
+ * Architecture:
+ * - Server renders full HTML (React SSR or Melina's renderToString)
+ * - Each page can have a client.tsx that exports a mount function
+ * - mount() runs when page loads, returns an unmount function
+ * - unmount() runs when navigating away
+ * - JSX in client.tsx creates real DOM elements (not React)
  */
 
+// Current page's unmount function
+let currentUnmount: (() => void) | null = null;
+
 // ============================================================================
-// PAGE HYDRATION
+// PAGE LIFECYCLE
 // ============================================================================
 
-async function hydratePage() {
-    const React = await import('react');
-    const ReactDOM = await import('react-dom/client');
+async function mountPage() {
+    // Unmount previous page
+    if (currentUnmount) {
+        try { currentUnmount(); } catch (e) { console.error('[Melina] Unmount error:', e); }
+        currentUnmount = null;
+    }
 
     // Get page metadata
     const metaEl = document.getElementById('__MELINA_META__');
-    if (!metaEl) {
-        console.warn('[Melina] No page metadata found');
-        return;
-    }
+    if (!metaEl) return;
 
-    let meta: { page?: string; props?: Record<string, any>; bundles?: Record<string, string> } = {};
+    let meta: { client?: string } = {};
     try {
         meta = JSON.parse(metaEl.textContent || '{}');
     } catch {
-        console.warn('[Melina] Invalid page metadata');
         return;
     }
 
-    if (!meta.page || !meta.bundles?.[meta.page]) {
-        console.warn('[Melina] No page component specified');
-        return;
-    }
+    // Load and execute client script
+    if (meta.client) {
+        try {
+            const module = await import(/* @vite-ignore */ meta.client);
+            const mount = module.default || module.mount;
 
-    // Load the page component bundle
-    const bundlePath = meta.bundles[meta.page];
-    let PageComponent: React.ComponentType<any>;
-
-    try {
-        const module = await import(/* @vite-ignore */ bundlePath);
-        PageComponent = module[meta.page] || module.default;
-        if (!PageComponent) {
-            console.error(`[Melina] No export found for page: ${meta.page}`);
-            return;
+            if (typeof mount === 'function') {
+                const unmount = mount();
+                if (typeof unmount === 'function') {
+                    currentUnmount = unmount;
+                }
+                console.log('[Melina] Page mounted');
+            }
+        } catch (e) {
+            console.error('[Melina] Client mount failed:', e);
         }
-    } catch (e) {
-        console.error(`[Melina] Failed to load page component:`, e);
-        return;
     }
-
-    // Find the page content element
-    const pageContent = document.getElementById('melina-page-content');
-    if (!pageContent) {
-        console.warn('[Melina] No page content element found');
-        return;
-    }
-
-    // Hydrate the page
-    const props = meta.props || {};
-    ReactDOM.hydrateRoot(pageContent, React.createElement(PageComponent, props));
-
-    console.log(`[Melina] Page hydrated: ${meta.page}`);
 }
 
 // ============================================================================
@@ -76,10 +62,6 @@ async function navigate(href: string) {
     const toPath = new URL(href, window.location.origin).pathname;
 
     if (fromPath === toPath) return;
-
-    window.dispatchEvent(new CustomEvent('melina:navigation-start', {
-        detail: { from: fromPath, to: toPath }
-    }));
 
     window.history.pushState({}, '', href);
 
@@ -94,7 +76,6 @@ async function navigate(href: string) {
         const updateDOM = () => {
             document.title = newDoc.title;
 
-            // Update page content
             const currentContent = document.getElementById('melina-page-content');
             const newContent = newDoc.getElementById('melina-page-content');
 
@@ -109,6 +90,8 @@ async function navigate(href: string) {
             const currentMeta = document.getElementById('__MELINA_META__');
             if (newMeta && currentMeta) {
                 currentMeta.textContent = newMeta.textContent;
+            } else if (newMeta) {
+                document.head.appendChild(newMeta.cloneNode(true));
             }
 
             window.scrollTo(0, 0);
@@ -117,12 +100,12 @@ async function navigate(href: string) {
         if (document.startViewTransition) {
             const transition = document.startViewTransition(() => updateDOM());
             transition.finished.then(() => {
-                hydratePage();
+                mountPage();
                 window.dispatchEvent(new CustomEvent('melina:navigated'));
             });
         } else {
             updateDOM();
-            hydratePage();
+            mountPage();
             window.dispatchEvent(new CustomEvent('melina:navigated'));
         }
 
@@ -185,12 +168,12 @@ function initializeLinkInterception() {
 
                 if (document.startViewTransition) {
                     document.startViewTransition(() => updateDOM()).finished.then(() => {
-                        hydratePage();
+                        mountPage();
                         window.dispatchEvent(new CustomEvent('melina:navigated'));
                     });
                 } else {
                     updateDOM();
-                    hydratePage();
+                    mountPage();
                     window.dispatchEvent(new CustomEvent('melina:navigated'));
                 }
             })
@@ -209,7 +192,7 @@ function initializeLinkInterception() {
 
 async function bootstrap() {
     initializeLinkInterception();
-    await hydratePage();
+    await mountPage();
     console.log('[Melina] Runtime ready');
 }
 
@@ -219,4 +202,4 @@ if (document.readyState === 'loading') {
     bootstrap();
 }
 
-export { navigate, hydratePage };
+export { navigate, mountPage };
