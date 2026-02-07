@@ -1261,6 +1261,28 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
         }
       }
 
+      // Build layout.client.tsx if it exists (persists across navigations)
+      // Check each layout directory for a layout.client.tsx
+      const layoutClientPaths: string[] = [];
+      for (const layoutPath of match.route.layouts) {
+        const layoutDir = path.dirname(layoutPath);
+        const layoutClientCandidates = [
+          path.join(layoutDir, 'layout.client.tsx'),
+          path.join(layoutDir, 'layout.client.ts'),
+        ];
+        for (const candidate of layoutClientCandidates) {
+          if (existsSync(candidate)) {
+            try {
+              const bundlePath = await buildClientScript(candidate);
+              layoutClientPaths.push(bundlePath);
+            } catch (e) {
+              console.warn(`Failed to build layout client script ${candidate}:`, e);
+            }
+            break;
+          }
+        }
+      }
+
       // Build the runtime (always included for navigation)
       const runtimePath = await buildRuntime();
 
@@ -1268,6 +1290,9 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
       const pageMeta: any = {};
       if (clientBundlePath) {
         pageMeta.client = clientBundlePath;
+      }
+      if (layoutClientPaths.length > 0) {
+        pageMeta.layoutClients = layoutClientPaths;
       }
 
       let fullHtml = `<!DOCTYPE html>${html}`;

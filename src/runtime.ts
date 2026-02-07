@@ -12,12 +12,16 @@
 // Current page's unmount function
 let currentUnmount: (() => void) | null = null;
 
+// Layout client scripts (persist across navigations)
+const layoutUnmounts: (() => void)[] = [];
+const loadedLayoutClients = new Set<string>();
+
 // ============================================================================
 // PAGE LIFECYCLE
 // ============================================================================
 
 async function mountPage() {
-    // Unmount previous page
+    // Unmount previous page's client script
     if (currentUnmount) {
         try { currentUnmount(); } catch (e) { console.error('[Melina] Unmount error:', e); }
         currentUnmount = null;
@@ -27,14 +31,37 @@ async function mountPage() {
     const metaEl = document.getElementById('__MELINA_META__');
     if (!metaEl) return;
 
-    let meta: { client?: string } = {};
+    let meta: { client?: string; layoutClients?: string[] } = {};
     try {
         meta = JSON.parse(metaEl.textContent || '{}');
     } catch {
         return;
     }
 
-    // Load and execute client script
+    // Load layout client scripts (only once, persists across navigations)
+    if (meta.layoutClients) {
+        for (const scriptPath of meta.layoutClients) {
+            if (loadedLayoutClients.has(scriptPath)) continue;
+            loadedLayoutClients.add(scriptPath);
+
+            try {
+                const module = await import(/* @vite-ignore */ scriptPath);
+                const mount = module.default || module.mount;
+
+                if (typeof mount === 'function') {
+                    const unmount = mount();
+                    if (typeof unmount === 'function') {
+                        layoutUnmounts.push(unmount);
+                    }
+                    console.log('[Melina] Layout client mounted (persistent)');
+                }
+            } catch (e) {
+                console.error('[Melina] Layout client mount failed:', e);
+            }
+        }
+    }
+
+    // Load and execute page client script
     if (meta.client) {
         try {
             const module = await import(/* @vite-ignore */ meta.client);
