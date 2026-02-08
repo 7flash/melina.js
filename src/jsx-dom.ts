@@ -17,7 +17,12 @@ export function jsx(
 ): Node {
     // Function component
     if (typeof tag === 'function') {
-        return tag({ ...props, children: children.length === 1 ? children[0] : children });
+        const finalProps = { ...props };
+        // Use varargs children only if props.children is missing (Classic Runtime fallback)
+        if ((!props || props.children === undefined) && children.length > 0) {
+            finalProps.children = children.length === 1 ? children[0] : children;
+        }
+        return tag(finalProps);
     }
 
     const el = document.createElement(tag);
@@ -50,13 +55,14 @@ export function jsx(
         }
 
         // Handle children passed as prop
-        if (props.children !== undefined && children.length === 0) {
+        // Handle children passed as prop (Automatic Runtime)
+        if (props.children !== undefined) {
             appendChildren(el, Array.isArray(props.children) ? props.children : [props.children]);
         }
     }
 
-    // Append direct children
-    if (children.length > 0) {
+    // Append direct children (Classic Runtime fallback)
+    if ((!props || props.children === undefined) && children.length > 0) {
         appendChildren(el, children);
     }
 

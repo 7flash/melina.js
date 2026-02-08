@@ -55,42 +55,42 @@ function generatePosts(count: number, offset: number = 0) {
 
 function PostCard({ post }: { post: any }) {
     return (
-        <article className="post-card" data-post-id={post.id} style={{ marginBottom: '16px' }}>
-            <header className="post-header">
-                <div className="post-avatar">
+        <article className="bg-secondary border border-border rounded-xl p-5 mb-4 transition-all duration-200 hover:border-border-light hover:-translate-y-0.5 hover:shadow-lg cursor-pointer post-card" data-post-id={post.id}>
+            <header className="flex items-center gap-3 mb-3">
+                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-accent to-purple-500 flex items-center justify-center text-white font-semibold text-lg shrink-0">
                     {post.author.name.split(' ').map((n: string) => n[0]).join('')}
                 </div>
-                <div className="post-meta">
-                    <div className="post-author">{post.author.name}</div>
-                    <div className="post-time">{post.author.handle} · {post.timeAgo}</div>
+                <div className="serialized-post-meta flex-1">
+                    <div className="font-semibold text-white hover:text-accent transition-colors">{post.author.name}</div>
+                    <div className="text-sm text-muted">{post.author.handle} · {post.timeAgo}</div>
                 </div>
             </header>
 
-            <p className="post-content">{post.content}</p>
+            <p className="text-gray-300 text-base mb-4 leading-relaxed">{post.content}</p>
 
             {post.hasImage && post.imageUrl && (
                 <img
                     src={post.imageUrl}
                     alt="Post image"
-                    className="post-image"
+                    className="w-full rounded-lg mb-4 bg-tertiary aspect-video object-cover"
                     loading="lazy"
                 />
             )}
 
-            <div className="post-actions">
-                <button className="post-action like-btn" data-post-id={post.id} data-likes={post.likes}>
+            <div className="flex gap-6 pt-3 border-t border-border">
+                <button className="flex items-center gap-1.5 text-muted text-sm hover:bg-hover hover:text-accent px-3 py-2 rounded-md transition-all like-btn" data-post-id={post.id} data-likes={post.likes}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
                     </svg>
                     <span className="like-count">{post.likes}</span>
                 </button>
-                <button className="post-action">
+                <button className="flex items-center gap-1.5 text-muted text-sm hover:bg-hover hover:text-accent px-3 py-2 rounded-md transition-all">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                     </svg>
                     {post.comments}
                 </button>
-                <button className="post-action">
+                <button className="flex items-center gap-1.5 text-muted text-sm hover:bg-hover hover:text-accent px-3 py-2 rounded-md transition-all">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13" />
                     </svg>
@@ -105,9 +105,9 @@ export default function HomePage() {
     const posts = generatePosts(10);
 
     return (
-        <div className="feed-container">
-            <header className="feed-header">
-                <h1>Your Feed</h1>
+        <div className="max-w-xl mx-auto pt-8 pb-32 px-4">
+            <header className="mb-8">
+                <h1 className="text-3xl font-bold text-white tracking-tight">Your Feed</h1>
             </header>
 
             <div id="feed-posts">
@@ -117,7 +117,7 @@ export default function HomePage() {
             </div>
 
             {/* Client script hooks into this for infinite scroll */}
-            <div id="feed-load-more" className="loading-indicator" />
+            <div id="feed-load-more" className="h-20 flex items-center justify-center" />
         </div>
     );
 }

@@ -812,8 +812,8 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
   try {
     server = Bun.serve(args);
   } catch (err) {
-    if (!unix && err.code === 'EADDRINUSE') {
-      args.port = findAvailablePort(3001);
+    if (!unix && (err.code === 'EADDRINUSE' || err.code === 'EACCES')) {
+      args.port = findAvailablePort((args.port || 3000) + 1);
       server = Bun.serve(args);
     } else {
       throw err;
@@ -861,7 +861,12 @@ export function findAvailablePort(startPort: number = 3001): number {
       listener.stop();
       return port;
     } catch (e: any) {
-      if (!e.message.includes('EADDRINUSE') && !e.message.includes('Address already in use')) {
+      if (
+        e.code !== 'EADDRINUSE' &&
+        e.code !== 'EACCES' &&
+        !e.message?.includes('EADDRINUSE') &&
+        !e.message?.includes('Address already in use')
+      ) {
         throw e;
       }
       // Continue to next port

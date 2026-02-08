@@ -35,6 +35,30 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
                 <title>Social Feed</title>
                 <script src="https://cdn.tailwindcss.com"></script>
+                <script dangerouslySetInnerHTML={{
+                    __html: `
+                        tailwind.config = {
+                            theme: {
+                                extend: {
+                                    colors: {
+                                        primary: '#0a0a0f',
+                                        secondary: '#12121a',
+                                        tertiary: '#1a1a25',
+                                        hover: '#22222f',
+                                        border: '#2a2a35',
+                                        'border-light': '#3a3a45',
+                                        accent: '#6366f1',
+                                        'accent-hover': '#818cf8',
+                                        success: '#10b981',
+                                        warning: '#f59e0b',
+                                        danger: '#ef4444',
+                                        muted: '#606070',
+                                    }
+                                }
+                            }
+                        }
+                    `
+                }} />
             </head>
             <body>
                 <div className="app-layout">

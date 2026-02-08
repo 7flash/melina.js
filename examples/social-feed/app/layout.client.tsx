@@ -157,15 +157,12 @@ const machine = setup({
             on: {
                 BACK: 'list',
                 CLOSE: 'idle',
-                TOGGLE: 'idle',
                 SEND_MESSAGE: { actions: 'addOutgoing' },
                 RECEIVE_MESSAGE: { actions: 'addIncoming' },
             },
         },
     },
 });
-
-// ─── SVG Icon Components ───
 
 function ExpandIcon() {
     return (

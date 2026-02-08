@@ -230,7 +230,7 @@ export default function mount(): () => void {
         if (!messagesArea || activeContactId === null) return;
 
         const contactMessages = messages.get(activeContactId) || [];
-        messagesArea.innerHTML = '';
+        messagesArea.replaceChildren();
 
         if (contactMessages.length === 0) {
             const emptyMsg = (

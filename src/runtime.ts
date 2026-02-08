@@ -49,8 +49,9 @@ async function mountPage() {
                 try { unmount(); } catch (e) { /* DOM already gone, safe to ignore */ }
             }
             layoutUnmounts.length = 0;
-            loadedLayoutClients.clear();
         }
+        // Always clear loaded status because we replaced the body, so we must re-mount everything
+        loadedLayoutClients.clear();
 
         for (const scriptPath of meta.layoutClients) {
             if (loadedLayoutClients.has(scriptPath)) continue;
