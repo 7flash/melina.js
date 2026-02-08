@@ -252,6 +252,11 @@ const builtAssets: Record<string, { content: ArrayBuffer; contentType: string }>
 // Cached runtime bundle path
 let cachedRuntimePath: string | null = null;
 
+// In-flight build deduplication — prevents concurrent Bun.build() calls
+// from exhausting resources and deadlocking the server
+let runtimeBuildInFlight: Promise<string> | null = null;
+const clientBuildInFlight: Map<string, Promise<string>> = new Map();
+
 /**
  * Build the Melina client runtime from TypeScript source
  * This bundles src/runtime.ts and serves it from memory
@@ -266,6 +271,21 @@ async function buildRuntime(): Promise<string> {
   if (cachedRuntimePath && !isDev) {
     return cachedRuntimePath;
   }
+
+  // If a build is already in flight, return the same promise
+  if (runtimeBuildInFlight) {
+    return runtimeBuildInFlight;
+  }
+
+  runtimeBuildInFlight = _buildRuntimeImpl();
+  try {
+    return await runtimeBuildInFlight;
+  } finally {
+    runtimeBuildInFlight = null;
+  }
+}
+
+async function _buildRuntimeImpl(): Promise<string> {
 
   const runtimePath = path.resolve(__dirname, './runtime.ts');
 
@@ -320,6 +340,23 @@ async function buildClientScript(clientPath: string): Promise<string> {
   if (!isDev && clientScriptCache[clientPath]) {
     return clientScriptCache[clientPath];
   }
+
+  // If a build for this path is already in flight, return the same promise
+  const inflight = clientBuildInFlight.get(clientPath);
+  if (inflight) {
+    return inflight;
+  }
+
+  const buildPromise = _buildClientScriptImpl(clientPath);
+  clientBuildInFlight.set(clientPath, buildPromise);
+  try {
+    return await buildPromise;
+  } finally {
+    clientBuildInFlight.delete(clientPath);
+  }
+}
+
+async function _buildClientScriptImpl(clientPath: string): Promise<string> {
 
   const jsxDomPath = path.resolve(__dirname, './jsx-dom.ts');
 
