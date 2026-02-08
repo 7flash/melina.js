@@ -850,7 +850,10 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
     server = Bun.serve(args);
   } catch (err) {
     if (!unix && (err.code === 'EADDRINUSE' || err.code === 'EACCES')) {
-      args.port = findAvailablePort((args.port || 3000) + 1);
+      const requestedPort = (args as any).port || 3000;
+      const newPort = findAvailablePort(requestedPort + 1);
+      console.warn(`⚠️  Port ${requestedPort} unavailable, using port ${newPort} instead`);
+      (args as any).port = newPort;
       server = Bun.serve(args);
     } else {
       throw err;
@@ -883,30 +886,27 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
 export function findAvailablePort(startPort: number = 3001): number {
   for (let port = startPort; port < startPort + 100; port++) {
     try {
-      const listener = Bun.listen({
+      // Use Bun.serve to test — this is what we actually use, so it's the right probe.
+      // Bun.listen uses raw TCP which triggers EACCES on many Windows ports.
+      const testServer = Bun.serve({
         port,
-        hostname: 'localhost',
-        socket: {
-          close() {
-            // Close callback
-          },
-          data() {
-            // Data callback
-          },
-        },
+        fetch() { return new Response(''); },
       });
-      listener.stop();
+      testServer.stop(true);
       return port;
     } catch (e: any) {
       if (
         e.code !== 'EADDRINUSE' &&
         e.code !== 'EACCES' &&
+        e.errno !== 10013 &&
         !e.message?.includes('EADDRINUSE') &&
+        !e.message?.includes('EACCES') &&
+        !e.message?.includes('Failed to listen') &&
         !e.message?.includes('Address already in use')
       ) {
         throw e;
       }
-      // Continue to next port
+      // Port not available, try next
     }
   }
   throw new Error(`No available port found in range ${startPort}-${startPort + 99}`);
