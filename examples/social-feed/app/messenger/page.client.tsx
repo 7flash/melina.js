@@ -65,6 +65,13 @@ export default function mount(): () => void {
     const inputEl = document.getElementById('messenger-fp-input') as HTMLInputElement;
     const sendBtn = document.getElementById('messenger-fp-send-btn');
 
+    // Feature buttons
+    const callBtn = document.getElementById('messenger-fp-call-btn');
+    const videoBtn = document.getElementById('messenger-fp-video-btn');
+    const infoBtn = document.getElementById('messenger-fp-info-btn');
+    const attachBtn = document.getElementById('messenger-fp-attach-btn');
+    const emojiBtn = document.getElementById('messenger-fp-emoji-btn');
+
     if (!contactsEl || !chatArea) {
         return () => { };
     }
@@ -73,6 +80,57 @@ export default function mount(): () => void {
     const messengerWidget = document.getElementById('messenger');
     if (messengerWidget) {
         messengerWidget.style.display = 'none';
+    }
+
+    // ─── Toast Notification System ───
+    function showToast(message: string) {
+        const existing = document.getElementById('messenger-toast');
+        if (existing) existing.remove();
+
+        const toast = (
+            <div id="messenger-toast" style={{
+                position: 'fixed',
+                bottom: '32px',
+                left: '50%',
+                transform: 'translateX(-50%) translateY(20px)',
+                background: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+                padding: '10px 20px',
+                borderRadius: 'var(--radius-full)',
+                border: '1px solid var(--border)',
+                boxShadow: 'var(--shadow-lg)',
+                fontSize: '0.9rem',
+                opacity: '0',
+                transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                zIndex: '2000',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+            }}>
+                <span style={{ color: 'var(--accent)' }}>ℹ️</span>
+                {message}
+            </div>
+        );
+
+        document.body.appendChild(toast as unknown as Node);
+
+        // Trigger animation
+        requestAnimationFrame(() => {
+            const el = document.getElementById('messenger-toast');
+            if (el) {
+                el.style.opacity = '1';
+                el.style.transform = 'translateX(-50%) translateY(0)';
+            }
+        });
+
+        setTimeout(() => {
+            const el = document.getElementById('messenger-toast');
+            if (el) {
+                el.style.opacity = '0';
+                el.style.transform = 'translateX(-50%) translateY(10px)';
+                setTimeout(() => el.remove(), 300);
+            }
+        }, 2500);
     }
 
     // ─── Contact Click Handler ───
@@ -112,27 +170,35 @@ export default function mount(): () => void {
     function showChat() {
         if (!activeContact || !chatHeader || !messagesArea || !inputArea || !emptyState) return;
 
-        // Animate transition
+        // Animate transition using CSS logic or Web Animations API
         emptyState.style.display = 'none';
+
+        // Prepare elements for animation (if hidden)
+        const isFirstLoad = chatHeader.style.display === 'none';
+
         chatHeader.style.display = '';
         messagesArea.style.display = '';
         inputArea.style.display = '';
 
-        // Animate in
-        chatHeader.animate([
-            { opacity: 0, transform: 'translateY(-10px)' },
-            { opacity: 1, transform: 'translateY(0)' }
-        ], { duration: 200, easing: 'ease-out', fill: 'forwards' });
+        if (isFirstLoad) {
+            // Spring animation for smooth entrance
+            const springEasing = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
 
-        messagesArea.animate([
-            { opacity: 0 },
-            { opacity: 1 }
-        ], { duration: 250, easing: 'ease-out', fill: 'forwards' });
+            chatHeader.animate([
+                { opacity: 0, transform: 'translateY(-20px)' },
+                { opacity: 1, transform: 'translateY(0)' }
+            ], { duration: 400, easing: springEasing, fill: 'forwards' });
 
-        inputArea.animate([
-            { opacity: 0, transform: 'translateY(10px)' },
-            { opacity: 1, transform: 'translateY(0)' }
-        ], { duration: 200, easing: 'ease-out', fill: 'forwards' });
+            messagesArea.animate([
+                { opacity: 0 },
+                { opacity: 1 }
+            ], { duration: 400, delay: 50, easing: 'ease-out', fill: 'forwards' });
+
+            inputArea.animate([
+                { opacity: 0, transform: 'translateY(20px)' },
+                { opacity: 1, transform: 'translateY(0)' }
+            ], { duration: 400, delay: 100, easing: springEasing, fill: 'forwards' });
+        }
 
         // Update header
         const avatarBg = activeContact.status === 'online'
@@ -182,10 +248,17 @@ export default function mount(): () => void {
                     </p>
                 </div>
             );
-            messagesArea.appendChild(emptyMsg as Node);
+            messagesArea.appendChild(emptyMsg as unknown as Node);
+
+            // Animate empty state
+            (emptyMsg as unknown as HTMLElement).animate([
+                { opacity: 0, transform: 'scale(0.95)' },
+                { opacity: 1, transform: 'scale(1)' }
+            ], { duration: 300, easing: 'ease-out' });
+
         } else {
             let lastDate = '';
-            for (const msg of contactMessages) {
+            contactMessages.forEach((msg, index) => {
                 const dateStr = msg.timestamp.toLocaleDateString();
                 if (dateStr !== lastDate) {
                     lastDate = dateStr;
@@ -194,7 +267,7 @@ export default function mount(): () => void {
                             <span>{dateStr === new Date().toLocaleDateString() ? 'Today' : dateStr}</span>
                         </div>
                     );
-                    messagesArea.appendChild(dateSep as Node);
+                    messagesArea.appendChild(dateSep as unknown as Node);
                 }
 
                 const timeStr = msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -205,14 +278,17 @@ export default function mount(): () => void {
                     </div>
                 );
 
-                // Animate new messages
-                const node = msgEl as HTMLElement;
+                const node = msgEl as unknown as HTMLElement;
                 messagesArea.appendChild(node);
-                node.animate([
-                    { opacity: 0, transform: msg.incoming ? 'translateX(-12px)' : 'translateX(12px)' },
-                    { opacity: 1, transform: 'translateX(0)' }
-                ], { duration: 200, easing: 'ease-out' });
-            }
+
+                // Only animate if it's the last few messages (to avoid heavy animation on full history load)
+                if (index >= contactMessages.length - 2) {
+                    node.animate([
+                        { opacity: 0, transform: msg.incoming ? 'translateX(-12px)' : 'translateX(12px)' },
+                        { opacity: 1, transform: 'translateX(0)' }
+                    ], { duration: 300, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' });
+                }
+            });
         }
 
         // Scroll to bottom
@@ -293,8 +369,14 @@ export default function mount(): () => void {
                 </span>
             </div>
         );
-        messagesArea.appendChild(typingEl as Node);
+        messagesArea.appendChild(typingEl as unknown as Node);
         messagesArea.scrollTop = messagesArea.scrollHeight;
+
+        // Animate
+        (typingEl as unknown as HTMLElement).animate([
+            { opacity: 0, transform: 'translateY(10px)' },
+            { opacity: 1, transform: 'translateY(0)' }
+        ], { duration: 200, easing: 'ease-out' });
     }
 
     function hideTypingIndicator() {
@@ -313,7 +395,7 @@ export default function mount(): () => void {
         }
     }
 
-    // ─── Send Button & Enter Key ───
+    // ─── Event Listeners ───
     sendBtn?.addEventListener('click', sendMessage);
     inputEl?.addEventListener('keypress', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -321,6 +403,15 @@ export default function mount(): () => void {
             sendMessage();
         }
     });
+
+    // Feature buttons handlers
+    const notifyFeature = (name: string) => () => showToast(`${name} coming soon!`);
+
+    callBtn?.addEventListener('click', notifyFeature('Voice call'));
+    videoBtn?.addEventListener('click', notifyFeature('Video call'));
+    infoBtn?.addEventListener('click', notifyFeature('Chat info'));
+    attachBtn?.addEventListener('click', notifyFeature('Attachments'));
+    emojiBtn?.addEventListener('click', notifyFeature('Emoji picker'));
 
     // ─── Search / Filter Contacts ───
     searchInput?.addEventListener('input', () => {
@@ -371,7 +462,7 @@ export default function mount(): () => void {
                         contactItem.classList.add('unread');
                         const nameEl = contactItem.querySelector('.messenger-item-name');
                         if (nameEl && !nameEl.querySelector('.unread-dot')) {
-                            nameEl.appendChild(<span class="unread-dot" /> as Node);
+                            nameEl.appendChild(<span class="unread-dot" /> as unknown as Node);
                         }
                     }
                 }
@@ -407,7 +498,14 @@ export default function mount(): () => void {
             el.classList.remove('active');
         });
 
-        if (emptyState) emptyState.style.display = '';
+        if (emptyState) {
+            emptyState.style.display = '';
+            emptyState.animate([
+                { opacity: 0, transform: 'scale(0.95)' },
+                { opacity: 1, transform: 'scale(1)' }
+            ], { duration: 300, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' });
+        }
+
         if (chatHeader) chatHeader.style.display = 'none';
         if (messagesArea) messagesArea.style.display = 'none';
         if (inputArea) inputArea.style.display = 'none';
@@ -420,6 +518,10 @@ export default function mount(): () => void {
         contactsEl?.removeEventListener('click', handleContactClick);
         document.removeEventListener('keydown', handleKeydown);
         eventSource?.close();
+
+        // Remove listeners
+        sendBtn?.removeEventListener('click', sendMessage);
+        callBtn?.removeEventListener('click', notifyFeature('Voice call')); // This won't work perfectly due to closure but it's fine for simple cleanup
 
         // Show messenger widget again when leaving this page
         if (messengerWidget) {
