@@ -38,8 +38,20 @@ async function mountPage() {
         return;
     }
 
-    // Load layout client scripts (only once, persists across navigations)
+    // Load layout client scripts
+    // After client-side navigation the body DOM is swapped, destroying all
+    // event listeners bound by previous layout mount. We must always
+    // unmount and re-mount layout clients to reattach them to fresh DOM.
     if (meta.layoutClients) {
+        // Unmount previous layout clients (their DOM/listeners are gone)
+        if (layoutUnmounts.length > 0) {
+            for (const unmount of layoutUnmounts) {
+                try { unmount(); } catch (e) { /* DOM already gone, safe to ignore */ }
+            }
+            layoutUnmounts.length = 0;
+            loadedLayoutClients.clear();
+        }
+
         for (const scriptPath of meta.layoutClients) {
             if (loadedLayoutClients.has(scriptPath)) continue;
             loadedLayoutClients.add(scriptPath);
@@ -53,7 +65,7 @@ async function mountPage() {
                     if (typeof unmount === 'function') {
                         layoutUnmounts.push(unmount);
                     }
-                    console.log('[Melina] Layout client mounted (persistent)');
+                    console.log('[Melina] Layout client mounted');
                 }
             } catch (e) {
                 console.error('[Melina] Layout client mount failed:', e);

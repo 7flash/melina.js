@@ -193,13 +193,13 @@ export default function mount(): () => void {
 
     observer.observe(loadMoreEl);
 
-    console.log('[Feed] Mounted — likes, navigation, infinite scroll active');
+
 
     // ─── Cleanup ───
     return () => {
         feedPosts.removeEventListener('click', handleLikeClick);
         feedPosts.removeEventListener('click', handlePostClick);
         observer.disconnect();
-        console.log('[Feed] Unmounted');
+
     };
 }

@@ -34,6 +34,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <meta name="viewport" content="width=device-width, initial-scale=1" />
                 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
                 <title>Social Feed</title>
+                <script src="https://cdn.tailwindcss.com"></script>
             </head>
             <body>
                 <div className="app-layout">
@@ -44,18 +45,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     <div /> {/* Right spacer */}
                 </div>
 
-                {/* Messenger Widget — server-rendered, interactivity from layout.client.tsx */}
-                <div id="messenger" className="messenger" style={{ viewTransitionName: 'messenger' }}>
-                    {/* Panel (hidden by default, client script toggles) */}
-                    <div id="messenger-panel" className="messenger-panel" style={{ display: 'none' }}>
-                        <div className="messenger-header">
-                            <span style={{ fontWeight: 600 }}>Messages</span>
-                            <button id="messenger-expand-btn" className="messenger-expand-btn" title="Expand">⬈</button>
-                            <button id="messenger-close-btn" className="messenger-close-btn">✕</button>
-                        </div>
-
-                        {/* Contact List */}
-                        <div id="messenger-list" className="messenger-list">
+                {/* Messenger Widget — server-rendered shell, XState client manages content */}
+                <div id="messenger" className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3" style={{ viewTransitionName: 'messenger' }}>
+                    {/* Panel — empty flex container, client script fills via replaceChildren */}
+                    <div id="messenger-panel" className="w-[380px] h-[520px] rounded-2xl overflow-hidden shadow-2xl shadow-black/40 border border-white/10 bg-[#16162a] flex-col hidden" style={{ display: 'none' }}>
+                        {/* SSR initial contact list for scraping by client script */}
+                        <div id="messenger-list" className="messenger-list" style={{ display: 'none' }}>
                             {contacts.map(contact => (
                                 <div
                                     key={contact.id}
@@ -65,52 +60,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                                     data-contact-avatar={contact.avatar}
                                     data-contact-status={contact.status}
                                 >
-                                    <div
-                                        className="messenger-item-avatar"
-                                        style={{ background: avatarBg(contact.status) }}
-                                    >
-                                        {contact.avatar}
-                                    </div>
-                                    <div className="messenger-item-content">
-                                        <div className="messenger-item-name">
-                                            {contact.name}
-                                            {contact.unread > 0 && <span className="unread-dot" />}
-                                        </div>
-                                        <div className="messenger-item-preview">{contact.lastMessage}</div>
-                                    </div>
-                                    <div className="messenger-item-time">{contact.lastMessageTime}</div>
+                                    <div className="messenger-item-preview" style={{ display: 'none' }}>{contact.lastMessage}</div>
+                                    <div className="messenger-item-time" style={{ display: 'none' }}>{contact.lastMessageTime}</div>
                                 </div>
                             ))}
-                        </div>
-
-                        {/* Chat View (hidden, shown when contact selected) */}
-                        <div id="messenger-chat" className="messenger-chat-view" style={{ display: 'none' }}>
-                            <div id="messenger-messages" className="messenger-messages">
-                                <div className="messenger-empty">No messages yet. Say hi! 👋</div>
-                            </div>
-                            <div className="messenger-input-area">
-                                <input
-                                    type="text"
-                                    id="messenger-input"
-                                    className="messenger-input"
-                                    placeholder="Type a message..."
-                                />
-                                <button id="messenger-send-btn" className="messenger-send-btn">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
-                                    </svg>
-                                </button>
-                            </div>
                         </div>
                     </div>
 
                     {/* Toggle Button */}
-                    <button id="messenger-toggle" className="messenger-toggle">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <button id="messenger-toggle" className="w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center shadow-xl shadow-indigo-500/30 hover:shadow-indigo-500/50 transition-all duration-200 hover:scale-105 active:scale-95 relative group">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="group-hover:scale-110 transition-transform">
                             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                         </svg>
                         {totalUnread > 0 && (
-                            <span id="messenger-badge" className="messenger-badge">{totalUnread}</span>
+                            <span id="messenger-badge" className="absolute -top-1 -right-1 min-w-[20px] h-5 rounded-full bg-rose-500 text-white text-[11px] font-bold flex items-center justify-center px-1 shadow-lg">{totalUnread}</span>
                         )}
                     </button>
                 </div>
