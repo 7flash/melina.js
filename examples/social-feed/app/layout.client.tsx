@@ -166,7 +166,7 @@ const machine = setup({
 
 function ExpandIcon() {
     return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1" />
         </svg>
     );
@@ -174,7 +174,7 @@ function ExpandIcon() {
 
 function CloseIcon() {
     return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M18 6 6 18M6 6l12 12" />
         </svg>
     );
@@ -182,7 +182,7 @@ function CloseIcon() {
 
 function BackIcon() {
     return (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5m7 7-7-7 7-7" />
         </svg>
     );
@@ -190,7 +190,7 @@ function BackIcon() {
 
 function SendIcon() {
     return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
         </svg>
     );
@@ -251,18 +251,18 @@ export default function mount(): () => void {
 
     function renderList(panel: HTMLElement, ctx: MsgContext) {
         const header = (
-            <div class="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-[#1a1a2e]">
-                <span class="font-semibold text-white text-sm tracking-wide">Messages</span>
-                <div class="flex gap-1">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-[#1a1a2e]">
+                <span className="font-semibold text-white text-sm tracking-wide">Messages</span>
+                <div className="flex gap-1">
                     <button
-                        class="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                        className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
                         title="Expand"
                         onClick={() => actor.send({ type: 'EXPAND' })}
                     >
                         <ExpandIcon />
                     </button>
                     <button
-                        class="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                        className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
                         onClick={() => actor.send({ type: 'CLOSE' })}
                     >
                         <CloseIcon />
@@ -271,7 +271,7 @@ export default function mount(): () => void {
             </div>
         );
 
-        const list = <div class="flex-1 overflow-y-auto" />;
+        const list = <div className="flex-1 overflow-y-auto" />;
 
         for (const c of ctx.contacts) {
             const dotColor = c.status === 'online' ? 'bg-emerald-400' : c.status === 'away' ? 'bg-amber-400' : 'bg-gray-500';
@@ -281,26 +281,26 @@ export default function mount(): () => void {
 
             const row = (
                 <div
-                    class={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/5 border-b border-white/5 transition-all duration-150 ${c.unread > 0 ? 'bg-indigo-500/10' : ''}`}
+                    className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/5 border-b border-white/5 transition-all duration-150 ${c.unread > 0 ? 'bg-indigo-500/10' : ''}`}
                     onClick={() => actor.send({ type: 'SELECT_CONTACT', contactId: c.id })}
                 >
-                    <div class="relative shrink-0">
-                        <div class={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xs bg-gradient-to-br ${avatarGrad}`}>
+                    <div className="relative shrink-0">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xs bg-gradient-to-br ${avatarGrad}`}>
                             {c.avatar}
                         </div>
-                        <span class={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#16162a] ${dotColor}`} />
+                        <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#16162a] ${dotColor}`} />
                     </div>
-                    <div class="flex-1 min-w-0">
-                        <div class="flex justify-between items-baseline mb-0.5">
-                            <span class={`text-sm ${c.unread > 0 ? 'font-bold text-white' : 'font-medium text-gray-300'}`}>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-baseline mb-0.5">
+                            <span className={`text-sm ${c.unread > 0 ? 'font-bold text-white' : 'font-medium text-gray-300'}`}>
                                 {c.name}
                             </span>
-                            <span class="text-[11px] text-gray-500 ml-2 shrink-0">{c.lastMessageTime}</span>
+                            <span className="text-[11px] text-gray-500 ml-2 shrink-0">{c.lastMessageTime}</span>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <p class="text-xs text-gray-400 truncate">{c.lastMessage}</p>
+                        <div className="flex items-center gap-2">
+                            <p className="text-xs text-gray-400 truncate">{c.lastMessage}</p>
                             {c.unread > 0 ? (
-                                <span class="shrink-0 min-w-[18px] h-[18px] rounded-full bg-indigo-500 text-white text-[10px] font-bold flex items-center justify-center px-1">
+                                <span className="shrink-0 min-w-[18px] h-[18px] rounded-full bg-indigo-500 text-white text-[10px] font-bold flex items-center justify-center px-1">
                                     {String(c.unread)}
                                 </span>
                             ) : null}
@@ -325,24 +325,24 @@ export default function mount(): () => void {
         const grad = isOnline ? 'from-emerald-500 to-cyan-500' : 'from-gray-500 to-gray-600';
 
         const header = (
-            <div class="flex items-center gap-2 px-3 py-2.5 border-b border-white/10 bg-[#1a1a2e]">
+            <div className="flex items-center gap-2 px-3 py-2.5 border-b border-white/10 bg-[#1a1a2e]">
                 <button
-                    class="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                    className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
                     onClick={() => actor.send({ type: 'BACK' })}
                 >
                     <BackIcon />
                 </button>
-                <div class={`w-8 h-8 rounded-full flex items-center justify-center text-xs text-white font-bold bg-gradient-to-br ${grad} shrink-0`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs text-white font-bold bg-gradient-to-br ${grad} shrink-0`}>
                     {contact.avatar}
                 </div>
-                <div class="flex-1 min-w-0">
-                    <div class="font-semibold text-white text-sm leading-tight truncate">{contact.name}</div>
-                    <div class={`text-[11px] ${isOnline ? 'text-emerald-400' : 'text-gray-500'}`}>
+                <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-white text-sm leading-tight truncate">{contact.name}</div>
+                    <div className={`text-[11px] ${isOnline ? 'text-emerald-400' : 'text-gray-500'}`}>
                         {isOnline ? '● Active now' : '○ Offline'}
                     </div>
                 </div>
                 <button
-                    class="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                    className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
                     onClick={() => actor.send({ type: 'CLOSE' })}
                 >
                     <CloseIcon />
@@ -350,18 +350,18 @@ export default function mount(): () => void {
             </div>
         );
 
-        const msgArea = <div class="flex-1 overflow-y-auto px-3 py-4 flex flex-col gap-2" />;
+        const msgArea = <div className="flex-1 overflow-y-auto px-3 py-4 flex flex-col gap-2" />;
         const msgs = ctx.messages.get(contact.id) || [];
 
         if (msgs.length === 0) {
             const emptyEl = (
-                <div class="flex flex-col items-center justify-center h-full text-gray-500 gap-3">
-                    <div class={`w-14 h-14 rounded-full flex items-center justify-center text-lg text-white font-bold bg-gradient-to-br ${grad} opacity-60`}>
+                <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-3">
+                    <div className={`w-14 h-14 rounded-full flex items-center justify-center text-lg text-white font-bold bg-gradient-to-br ${grad} opacity-60`}>
                         {contact.avatar}
                     </div>
-                    <div class="text-center">
-                        <p class="text-sm font-medium text-gray-400">{contact.name}</p>
-                        <p class="text-xs text-gray-500 mt-1">No messages yet. Say hi! 👋</p>
+                    <div className="text-center">
+                        <p className="text-sm font-medium text-gray-400">{contact.name}</p>
+                        <p className="text-xs text-gray-500 mt-1">No messages yet. Say hi! 👋</p>
                     </div>
                 </div>
             );
@@ -369,7 +369,7 @@ export default function mount(): () => void {
         } else {
             for (const msg of msgs) {
                 const bubble = (
-                    <div class={`max-w-[80%] px-3.5 py-2 text-sm leading-relaxed ${msg.incoming
+                    <div className={`max-w-[80%] px-3.5 py-2 text-sm leading-relaxed ${msg.incoming
                         ? 'bg-white/10 text-gray-200 self-start rounded-2xl rounded-bl-md'
                         : 'bg-indigo-600 text-white self-end rounded-2xl rounded-br-md'
                         }`}>
@@ -387,7 +387,7 @@ export default function mount(): () => void {
         const inputEl = (
             <input
                 type="text"
-                class="flex-1 bg-white/5 border border-white/10 text-white text-sm rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 placeholder-gray-500"
+                className="flex-1 bg-white/5 border border-white/10 text-white text-sm rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 placeholder-gray-500"
                 placeholder="Type a message..."
             />
         ) as unknown as HTMLInputElement;
@@ -408,10 +408,10 @@ export default function mount(): () => void {
         });
 
         const inputBar = (
-            <div class="px-3 py-2.5 border-t border-white/10 bg-[#1a1a2e] flex gap-2 items-center">
+            <div className="px-3 py-2.5 border-t border-white/10 bg-[#1a1a2e] flex gap-2 items-center">
                 {inputEl}
                 <button
-                    class="w-8 h-8 flex items-center justify-center bg-indigo-600 hover:bg-indigo-500 text-white rounded-full transition-colors shrink-0"
+                    className="w-8 h-8 flex items-center justify-center bg-indigo-600 hover:bg-indigo-500 text-white rounded-full transition-colors shrink-0"
                     onClick={sendHandler}
                 >
                     <SendIcon />
