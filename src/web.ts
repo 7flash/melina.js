@@ -848,8 +848,17 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
   let server;
   try {
     server = Bun.serve(args);
-  } catch (err) {
-    if (!unix && (err.code === 'EADDRINUSE' || err.code === 'EACCES')) {
+  } catch (err: any) {
+    const isPortUnavailable = !unix && (
+      err.code === 'EADDRINUSE' ||
+      err.code === 'EACCES' ||
+      err.errno === 10013 ||
+      err.message?.includes('EADDRINUSE') ||
+      err.message?.includes('EACCES') ||
+      err.message?.includes('Address already in use') ||
+      err.message?.includes('Failed to listen')
+    );
+    if (isPortUnavailable) {
       const requestedPort = (args as any).port || 3000;
       const newPort = findAvailablePort(requestedPort + 1);
       console.warn(`⚠️  Port ${requestedPort} unavailable, using port ${newPort} instead`);

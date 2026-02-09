@@ -6,6 +6,7 @@
  * and the ability to add custom middleware.
  */
 import { start, serve, createAppRouter } from '../../src/web';
+import { measure } from '@ments/utils';
 
 // Option 1: Simple start (recommended for most cases)
 // await start({ port: 3000 });
@@ -16,7 +17,7 @@ const app = createAppRouter({
     defaultTitle: 'Programmatic API Demo',
 });
 
-serve(async (req, measure) => {
+serve(async (req, m) => {
     const url = new URL(req.url);
 
     // Custom health check endpoint
@@ -26,13 +27,10 @@ serve(async (req, measure) => {
         });
     }
 
-    // Custom logging
-    console.log(`[${new Date().toISOString()}] ${req.method} ${url.pathname}`);
-
     // Delegate to Melina app router
-    return app(req, measure);
+    return app(req, m);
 
 }, { port: 3000 });
 
-console.log('🚀 Custom Melina server started!');
-console.log('📡 Health check: http://localhost:3000/health');
+measure(() => '🚀 Custom Melina server started!', 'Server');
+measure(() => '📡 Health check: http://localhost:3000/health', 'Health');

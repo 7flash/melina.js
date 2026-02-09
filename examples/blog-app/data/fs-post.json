@@ -1,9 +1,0 @@
-{
-    "title": "File System Post",
-    "content": "This post was read directly from the file system using fs.readFileSync! This proves we are running on the server.",
-    "author": "Server",
-    "authorId": 99,
-    "date": "2026-01-27",
-    "category": "server-side",
-    "readTime": "1 min read"
-}
