@@ -2,19 +2,10 @@
  * Melina.js Client Runtime
  * 
  * Architecture:
- * - Server renders full HTML (React SSR or Melina's renderToString)
- * - Each page can have a client.tsx that exports a mount function
- * - mount() runs when page loads, returns an unmount function
- * - unmount() runs when navigating away
- * - JSX in client.tsx creates real DOM elements (not React)
- * 
- * Navigation:
- * - On link click, fetch new full page from server
- * - Inside view transition (screen frozen):
- *   1. Detach persistent elements (data-melina-persist)
- *   2. Replace body with fresh server HTML
- *   3. Transplant live DOM back using moveBefore
- * - Layout client scripts persist — their DOM is physically preserved
+ * - Server renders full HTML (React SSR or string templates)
+ * - Framework auto-wraps {children} in #melina-page-content (display:contents)
+ * - On navigation, only #melina-page-content innerHTML is replaced — layout DOM stays untouched
+ * - Layout client scripts mount once and persist across navigations
  * - Page client scripts unmount → mount on each navigation
  */
 
@@ -29,52 +20,13 @@ const loadedLayoutClients = new Set<string>();
 let layoutsInitialized = false;
 
 // ============================================================================
-// PERSISTENT ELEMENT TRANSPLANT
-// ============================================================================
-
-/**
- * Collect all elements marked for persistence.
- * These are live DOM nodes whose event listeners and state survive navigation.
- */
-function collectPersistentElements(): Map<string, Element> {
-    const elements = new Map<string, Element>();
-    document.querySelectorAll('[data-melina-persist]').forEach(el => {
-        const key = el.getAttribute('data-melina-persist')!;
-        elements.set(key, el);
-    });
-    return elements;
-}
-
-/**
- * After full body swap, transplant live DOM nodes back into position,
- * replacing server-rendered placeholders with the preserved elements.
- * Uses moveBefore when available (preserves iframe/animation state),
- * falls back to replaceWith.
- */
-function transplantPersistentElements(elements: Map<string, Element>): void {
-    elements.forEach((liveEl, key) => {
-        const placeholder = document.querySelector(`[data-melina-persist="${key}"]`);
-        if (placeholder && placeholder.parentNode) {
-            if (typeof (placeholder.parentNode as any).moveBefore === 'function') {
-                // moveBefore preserves all element state
-                (placeholder.parentNode as any).moveBefore(liveEl, placeholder);
-                placeholder.remove();
-            } else {
-                // Fallback: replaceWith (preserves most state)
-                placeholder.replaceWith(liveEl);
-            }
-        }
-    });
-}
-
-// ============================================================================
 // PAGE LIFECYCLE
 // ============================================================================
 
-async function mountPage(layoutPersisted = false) {
+async function mountPage(partialSwap = false) {
     // Unmount previous page's client script
     if (currentUnmount) {
-        try { currentUnmount(); } catch (e) { console.error('[Melina] Unmount error:', e); }
+        try { currentUnmount(); } catch (e) { /* ignore */ }
         currentUnmount = null;
     }
 
@@ -90,13 +42,13 @@ async function mountPage(layoutPersisted = false) {
     }
 
     // Load layout client scripts
-    // If layout was persisted via moveBefore, skip — DOM and listeners are still alive.
-    // Otherwise (first load or no persistent elements), mount fresh.
+    // On partial swap: layout DOM is untouched, skip — state persists.
+    // On first load or full swap: mount fresh.
     if (meta.layoutClients) {
-        if (layoutPersisted && layoutsInitialized) {
-            // Layout DOM transplanted — XState, listeners, state all persist
+        if (partialSwap && layoutsInitialized) {
+            // Layout DOM never changed — XState, listeners, everything persists
         } else {
-            // First load or full body swap without persistence — mount layout scripts
+            // First load — mount layout scripts
             if (layoutUnmounts.length > 0) {
                 for (const unmount of layoutUnmounts) {
                     try { unmount(); } catch (e) { /* DOM already gone, safe to ignore */ }
@@ -118,10 +70,9 @@ async function mountPage(layoutPersisted = false) {
                         if (typeof unmount === 'function') {
                             layoutUnmounts.push(unmount);
                         }
-                        console.log('[Melina] Layout client mounted');
                     }
                 } catch (e) {
-                    console.error('[Melina] Layout client mount failed:', e);
+                    // Layout client build may have failed (missing deps etc)
                 }
             }
 
@@ -132,7 +83,9 @@ async function mountPage(layoutPersisted = false) {
     // Load and execute page client script
     if (meta.client) {
         try {
-            const module = await import(/* @vite-ignore */ meta.client);
+            // Cache-bust the import so mount() runs fresh each time
+            const url = meta.client + (meta.client.includes('?') ? '&' : '?') + '_t=' + Date.now();
+            const module = await import(/* @vite-ignore */ url);
             const mount = module.default || module.mount;
 
             if (typeof mount === 'function') {
@@ -140,10 +93,9 @@ async function mountPage(layoutPersisted = false) {
                 if (typeof unmount === 'function') {
                     currentUnmount = unmount;
                 }
-                console.log('[Melina] Page mounted');
             }
         } catch (e) {
-            console.error('[Melina] Client mount failed:', e);
+            // Page client build may have failed
         }
     }
 }
@@ -168,19 +120,30 @@ async function navigate(href: string) {
         const parser = new DOMParser();
         const newDoc = parser.parseFromString(htmlText, 'text/html');
 
-        // Collect persistent elements BEFORE DOM swap
-        const persisted = collectPersistentElements();
+        let didPartialSwap = false;
 
         const updateDOM = () => {
             document.title = newDoc.title;
 
-            // Full body replacement — fresh server HTML
-            document.body.innerHTML = newDoc.body.innerHTML;
+            // Partial swap: only replace #melina-page-content, leaving layout intact
+            const currentSlot = document.getElementById('melina-page-content');
+            const newSlot = newDoc.getElementById('melina-page-content');
 
-            // Transplant live DOM back into position
-            // Inside view transition, screen is frozen — user sees nothing
-            if (persisted.size > 0) {
-                transplantPersistentElements(persisted);
+            if (currentSlot && newSlot) {
+                currentSlot.innerHTML = newSlot.innerHTML;
+                didPartialSwap = true;
+            } else {
+                // Fallback: full body swap (no layout or different layout structure)
+                document.body.innerHTML = newDoc.body.innerHTML;
+            }
+
+            // Update __MELINA_META__ for the new page
+            const oldMeta = document.getElementById('__MELINA_META__');
+            const newMeta = newDoc.getElementById('__MELINA_META__');
+            if (oldMeta && newMeta) {
+                oldMeta.textContent = newMeta.textContent;
+            } else if (newMeta) {
+                document.body.appendChild(newMeta.cloneNode(true));
             }
 
             window.scrollTo(0, 0);
@@ -189,17 +152,16 @@ async function navigate(href: string) {
         if (document.startViewTransition) {
             const transition = document.startViewTransition(() => updateDOM());
             transition.finished.then(() => {
-                mountPage(persisted.size > 0);
+                mountPage(didPartialSwap);
                 window.dispatchEvent(new CustomEvent('melina:navigated'));
             });
         } else {
             updateDOM();
-            mountPage(persisted.size > 0);
+            mountPage(didPartialSwap);
             window.dispatchEvent(new CustomEvent('melina:navigated'));
         }
 
     } catch (error) {
-        console.error('[Melina] Navigation failed:', error);
         window.location.href = href;
     }
 }
@@ -240,35 +202,45 @@ function initializeLinkInterception() {
                 const parser = new DOMParser();
                 const newDoc = parser.parseFromString(htmlText, 'text/html');
 
-                const persisted = collectPersistentElements();
+                let didPartialSwap = false;
 
                 const updateDOM = () => {
                     document.title = newDoc.title;
-                    document.body.innerHTML = newDoc.body.innerHTML;
 
-                    if (persisted.size > 0) {
-                        transplantPersistentElements(persisted);
+                    const currentSlot = document.getElementById('melina-page-content');
+                    const newSlot = newDoc.getElementById('melina-page-content');
+
+                    if (currentSlot && newSlot) {
+                        currentSlot.innerHTML = newSlot.innerHTML;
+                        didPartialSwap = true;
+                    } else {
+                        document.body.innerHTML = newDoc.body.innerHTML;
+                    }
+
+                    const oldMeta = document.getElementById('__MELINA_META__');
+                    const newMeta = newDoc.getElementById('__MELINA_META__');
+                    if (oldMeta && newMeta) {
+                        oldMeta.textContent = newMeta.textContent;
+                    } else if (newMeta) {
+                        document.body.appendChild(newMeta.cloneNode(true));
                     }
                 };
 
                 if (document.startViewTransition) {
                     document.startViewTransition(() => updateDOM()).finished.then(() => {
-                        mountPage(persisted.size > 0);
+                        mountPage(didPartialSwap);
                         window.dispatchEvent(new CustomEvent('melina:navigated'));
                     });
                 } else {
                     updateDOM();
-                    mountPage(persisted.size > 0);
+                    mountPage(didPartialSwap);
                     window.dispatchEvent(new CustomEvent('melina:navigated'));
                 }
             })
             .catch(err => {
-                console.error('[Melina] Popstate navigation failed:', err);
                 window.location.reload();
             });
     });
-
-    console.log('[Melina] Link interception active');
 }
 
 // ============================================================================
@@ -278,7 +250,6 @@ function initializeLinkInterception() {
 async function bootstrap() {
     initializeLinkInterception();
     await mountPage();
-    console.log('[Melina] Runtime ready');
 }
 
 if (document.readyState === 'loading') {

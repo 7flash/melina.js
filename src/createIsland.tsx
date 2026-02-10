@@ -1,4 +1,4 @@
-import { createElement, renderToString, type VNode, type Component, type Child } from './client';
+import React from 'react';
 
 // Check if we're on the server
 const isServer = typeof window === 'undefined';
@@ -19,7 +19,7 @@ declare global {
  * ```tsx
  * // components/Counter.tsx
  * 'use client';
- * import { createIsland } from 'melina';
+ * import { createIsland } from '@ments/web';
  * 
  * function CounterImpl({ initialCount = 0 }) {
  *   const [count, setCount] = useState(initialCount);
@@ -37,20 +37,21 @@ declare global {
  * - Hydrates the component with full interactivity
  */
 export function createIsland<P extends object>(
-    ComponentImpl: Component<P>,
+    Component: React.ComponentType<P>,
     name: string
-): Component<P> {
+): React.FC<P> {
     // Return a wrapper component
-    const IslandWrapper: Component<P> = (props) => {
+    const IslandWrapper: React.FC<P> = (props) => {
         if (isServer) {
             // SERVER: Render the island marker
             // We also try to render the component for SEO/initial content
             let innerHtml = '';
             try {
                 // Attempt to render for progressive enhancement
-                // Using melina/client's renderToString
-                innerHtml = renderToString(
-                    createElement(ComponentImpl, props)
+                // This might fail if the component uses hooks
+                const ReactDOMServer = require('react-dom/server');
+                innerHtml = ReactDOMServer.renderToString(
+                    React.createElement(Component, props)
                 );
             } catch (e) {
                 // Component uses hooks - can't SSR, just show placeholder
@@ -60,17 +61,18 @@ export function createIsland<P extends object>(
             // Return the island marker with serialized props
             const propsJson = JSON.stringify(props).replace(/"/g, '&quot;');
 
-            return createElement('div', {
+            return React.createElement('div', {
                 'data-melina-island': name,
                 'data-props': propsJson,
                 dangerouslySetInnerHTML: { __html: innerHtml }
             });
         } else {
             // CLIENT: Render the actual component
-            return createElement(ComponentImpl, props);
+            return React.createElement(Component, props);
         }
     };
 
+    IslandWrapper.displayName = `Island(${name})`;
     return IslandWrapper;
 }
 
@@ -80,7 +82,7 @@ export function createIsland<P extends object>(
  * Usage:
  * ```tsx
  * // In a Server Component
- * import { Island } from 'melina';
+ * import { Island } from '@ments/web';
  * import { Counter } from './components/Counter';
  * 
  * export default function Page() {
@@ -89,15 +91,15 @@ export function createIsland<P extends object>(
  * ```
  */
 export function Island<P extends object>({
-    component: ComponentImpl,
+    component: Component,
     name,
     ...props
 }: {
-    component: Component<P>;
+    component: React.ComponentType<P>;
     name: string;
-} & P): VNode {
-    const WrappedComponent = createIsland(ComponentImpl, name);
-    return createElement(WrappedComponent, props as P);
+} & P): React.ReactElement {
+    const WrappedComponent = createIsland(Component, name);
+    return React.createElement(WrappedComponent, props as P);
 }
 
 /**
@@ -109,11 +111,11 @@ export function ClientOnly({
     children,
     fallback = null
 }: {
-    children: Child;
-    fallback?: Child;
-}): VNode | null {
+    children: React.ReactNode;
+    fallback?: React.ReactNode;
+}): React.ReactElement | null {
     if (isServer) {
-        return fallback as VNode | null;
+        return fallback as React.ReactElement | null;
     }
-    return children as VNode | null;
+    return children as React.ReactElement;
 }
