@@ -1259,26 +1259,52 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
         throw new Error(`No default export found in ${match.route.filePath}`);
       }
 
-      // Use React for SSR
-      const React = await import('react');
-      const ReactDOMServer = await import('react-dom/server');
+      // Render page content — detect if component returns string or React element
+      let pageContent = PageComponent({ params: match.params });
+      if (pageContent instanceof Promise) pageContent = await pageContent;
+      const isStringMode = typeof pageContent === 'string';
 
-      // Build the component tree with nested layouts
-      let tree: any = React.createElement(PageComponent, { params: match.params });
+      let html: string;
 
-      // Wrap with layouts (innermost to outermost)
-      for (let i = match.route.layouts.length - 1; i >= 0; i--) {
-        const layoutPath = match.route.layouts[i];
-        const layoutModule = await importSSR(layoutPath);
-        const LayoutComponent = layoutModule.default;
-
-        if (LayoutComponent) {
-          tree = React.createElement(LayoutComponent, null, tree);
+      if (isStringMode) {
+        // ─── String mode: components return raw HTML strings ───
+        // Page content is already a string, wrap with layouts
+        let content = pageContent as string;
+        for (let i = match.route.layouts.length - 1; i >= 0; i--) {
+          const layoutPath = match.route.layouts[i];
+          const layoutModule = await importSSR(layoutPath);
+          const LayoutComponent = layoutModule.default;
+          if (LayoutComponent) {
+            // Layout receives children as a string via props
+            let layoutResult = LayoutComponent({ children: content });
+            if (layoutResult instanceof Promise) layoutResult = await layoutResult;
+            if (typeof layoutResult === 'string') {
+              content = layoutResult;
+            }
+          }
         }
-      }
+        html = content;
+      } else {
+        // ─── React mode: components return JSX elements ───
+        const React = await import('react');
+        const ReactDOMServer = await import('react-dom/server');
 
-      // Render to HTML
-      const html = ReactDOMServer.renderToString(tree);
+        let tree: any = pageContent;
+
+        // Wrap with layouts (innermost to outermost)
+        for (let i = match.route.layouts.length - 1; i >= 0; i--) {
+          const layoutPath = match.route.layouts[i];
+          const layoutModule = await importSSR(layoutPath);
+          const LayoutComponent = layoutModule.default;
+
+          if (LayoutComponent) {
+            tree = React.createElement(LayoutComponent, null, tree);
+          }
+        }
+
+        // Render to HTML
+        html = ReactDOMServer.renderToString(tree);
+      }
 
       // Build CSS
       let stylesVirtualPath = '';

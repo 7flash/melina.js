@@ -8,12 +8,12 @@
 2. [Core Concepts](#core-concepts)
 3. [Quick Start](#quick-start)
 4. [Server Components](#server-components)
-5. [Client Components (Islands)](#client-components-islands)
-6. [Routing](#routing)
-7. [Layouts](#layouts)
-8. [State Persistence](#state-persistence)
-9. [View Transitions](#view-transitions)
-10. [Cross-Island Communication](#cross-island-communication)
+5. [Client Mount Scripts](#client-mount-scripts)
+6. [Client Components (Islands)](#client-components-islands)
+7. [Routing](#routing)
+8. [Layouts](#layouts)
+9. [State Persistence](#state-persistence)
+10. [View Transitions](#view-transitions)
 11. [API Routes](#api-routes)
 12. [Styling](#styling)
 13. [Best Practices & Gotchas](#best-practices--gotchas)
@@ -24,21 +24,18 @@
 
 ## Introduction
 
-Melina.js is a Next.js-compatible framework with a simpler architecture, built specifically for Bun. It uses the **Islands Architecture** where:
-
-- **Server Components**: Rendered on the server, sent as HTML
-- **Client Components (Islands)**: Interactive React components that hydrate on the client
+Melina.js is a server-first web framework built for Bun. Pages render on the server as HTML, and you add interactivity through **client mount scripts** or **React islands** — whichever fits your use case.
 
 ### Key Features
 
 - ✅ File-based routing (Next.js App Router style)
 - ✅ Nested layouts with automatic composition
-- ✅ Islands architecture for optimal performance
+- ✅ Client mount scripts — vanilla interactivity on server-rendered HTML
+- ✅ React islands — selective hydration for complex components
 - ✅ SPA-like navigation with partial page swaps
-- ✅ High-fidelity state preservation (Hangar architecture)
 - ✅ Native View Transitions API support
-- ✅ CSS animations that persist across navigation
 - ✅ Streaming HTML responses
+- ✅ In-memory builds — no `dist/` folder
 
 ---
 
@@ -46,10 +43,10 @@ Melina.js is a Next.js-compatible framework with a simpler architecture, built s
 
 ### The Two Graphs
 
-Melina.js separates your app into two distinct execution contexts:
+Melina.js separates your app into two execution contexts:
 
-1. **Server Graph** — Layouts and pages that render on the server (Bun)
-2. **Client Graph** — Interactive components (islands) that run in the browser
+1. **Server** — Layouts and pages render on Bun, producing HTML
+2. **Client** — Interactivity added via mount scripts or React islands
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -63,11 +60,10 @@ Melina.js separates your app into two distinct execution contexts:
 ┌─────────────────────────────────────────────────────────────┐
 │                     BROWSER                                 │
 │  ┌────────────────────────────────────────────────────────┐│
-│  │  Static HTML + Islands (hydrated React components)     ││
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐             ││
-│  │  │ Counter  │  │ SearchBar│  │ JobTracker│             ││
-│  │  │ (island) │  │ (island) │  │ (island)  │             ││
-│  │  └──────────┘  └──────────┘  └──────────┘             ││
+│  │  Server HTML + Client Interactivity                    ││
+│  │                                                        ││
+│  │  Option A: page.client.tsx  (vanilla mount scripts)    ││
+│  │  Option B: 'use client'     (React islands)            ││
 │  └────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -167,9 +163,84 @@ export default async function HomePage() {
 
 ---
 
+## Client Mount Scripts
+
+The simplest way to add interactivity. Create a `page.client.tsx` file alongside any `page.tsx` — it runs in the browser after the server HTML is rendered.
+
+### Basic Mount Script
+
+```tsx
+// app/page.client.tsx
+export default function mount(): () => void {
+  // Attach event listeners to server-rendered HTML
+  const btn = document.querySelector('#my-button');
+  btn?.addEventListener('click', () => {
+    btn.textContent = 'Clicked!';
+  });
+
+  // Return cleanup function (called on navigation)
+  return () => {
+    btn?.removeEventListener('click', () => {});
+  };
+}
+```
+
+### Layout-Level Mount Scripts
+
+Create `layout.client.tsx` for interactivity that persists across page navigations:
+
+```tsx
+// app/layout.client.tsx — runs once, persists across navigation
+export default function mount(): () => void {
+  // E.g., a messenger widget, notification system, etc.
+  const toggle = document.querySelector('#widget-toggle');
+  toggle?.addEventListener('click', () => {
+    document.querySelector('#widget')?.classList.toggle('open');
+  });
+
+  return () => {};
+}
+```
+
+### JSX in Client Scripts
+
+Client mount scripts can use JSX to create real DOM elements (not React virtual DOM):
+
+```tsx
+// app/page.client.tsx
+export default function mount(): () => void {
+  const container = document.querySelector('#dynamic-content');
+  
+  // JSX creates actual HTMLElements here
+  const el = (
+    <div className="card">
+      <h2>Dynamic Content</h2>
+      <button onClick={() => alert('clicked')}>Click me</button>
+    </div>
+  );
+  
+  container?.appendChild(el as Node);
+
+  return () => {
+    (el as Node).remove();
+  };
+}
+```
+
+### When to Use Mount Scripts vs Islands
+
+| Use **mount scripts** when... | Use **islands** when... |
+|-----|-----|
+| Adding event listeners to server HTML | You need React hooks (`useState`, `useEffect`) |
+| DOM manipulation, animations | Complex component trees with state |
+| Light interactivity (toggles, modals) | Re-usable interactive components |
+| Maximum performance, zero framework overhead | Existing React component library |
+
+---
+
 ## Client Components (Islands)
 
-Add `'use client'` at the top of your file to make it interactive. Melina automatically handles the transformation!
+For complex interactive components, you can use React islands. Add `'use client'` to make a component interactive:
 
 ### Auto-Wrapping (Default)
 
@@ -941,8 +1012,9 @@ echo 'export default () => <h1>Hello!</h1>;' > app/page.tsx
 
 ## Version History
 
-- **v1.0.0** — Hangar architecture, View Transitions, high-fidelity persistence
-- **v0.2.0** — Partial page swap architecture, persistent islands
+- **v1.2.0** — Examples cleanup, client mount scripts documentation, Windows port fallback
+- **v1.0.0** — View Transitions, state persistence, navigation events
+- **v0.2.0** — Partial page swap architecture, persistent layouts
 - **v0.1.0** — Initial release with file-based routing
 
 ---

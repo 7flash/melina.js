@@ -21,9 +21,9 @@ Thank you for your interest in contributing to Melina.js! 🦊
    ```bash
    bun install
    ```
-4. Run the example app:
+4. Run the flagship example:
    ```bash
-   cd examples/app-router
+   cd examples/social-feed
    bun run dev
    ```
 
@@ -34,10 +34,14 @@ Thank you for your interest in contributing to Melina.js! 🦊
 ```
 melina.js/
 ├── src/                 # Source code
-│   ├── web.ts          # Main server & router
+│   ├── web.ts          # Main server, router & build system
 │   ├── island.ts       # Island helper
 │   ├── Link.tsx        # Link component
-│   └── runtime/        # Client-side runtime
+│   ├── router.ts       # File-based route discovery
+│   ├── mcp.ts          # MCP protocol support
+│   ├── jsx-dom.ts      # Client-side JSX runtime
+│   ├── runtime.ts      # Client runtime bootstrap
+│   └── runtime/        # Client-side navigation
 ├── bin/                # CLI
 ├── docs/               # Documentation
 ├── examples/           # Example applications
@@ -55,7 +59,7 @@ bun test
 The best way to test changes is with the example apps in `examples/`:
 
 ```bash
-cd examples/app-router
+cd examples/social-feed
 bun run dev
 ```
 
@@ -119,8 +123,11 @@ chore: update dependencies
 |------|---------|
 | `src/web.ts` | Server, router, build system |
 | `src/island.ts` | `island()` helper for client components |
-| `src/runtime/hangar.ts` | Client-side island management |
+| `src/router.ts` | File-based route discovery |
+| `src/runtime/navigation.tsx` | Client-side navigation & partial swaps |
+| `src/mcp.ts` | MCP protocol server support |
 | `src/Link.tsx` | Navigation component |
+| `src/jsx-dom.ts` | Client-side JSX runtime (DOM creation) |
 
 ## Questions?
 

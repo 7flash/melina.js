@@ -1,7 +1,5 @@
 # Melina.js Examples
 
-Each example demonstrates a specific capability of the framework.
-
 | Example | Description | Key Concepts |
 |---------|-------------|-------------|
 | [**social-feed**](./social-feed/) | Full social media app with feed, messenger, SSE | App Router, layouts, client scripts, view transitions, XState |

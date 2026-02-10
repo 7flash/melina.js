@@ -57,3 +57,23 @@ This example uses the **"Server HTML + Client Mount Script"** pattern:
 4. Mount functions return a **cleanup function** — automatic teardown on navigation
 
 This architecture achieves near-zero client JS on initial load while keeping full interactivity.
+
+## Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `react`, `react-dom` | Server-side rendering of page components |
+| `xstate` | State machine for the messenger widget (contact selection, messages, SSE) |
+| `melina` | Framework (linked via `file:../..`) |
+
+## Key Patterns
+
+- **XState for Complex UI** — The messenger widget uses a state machine to manage contact selection, message history, SSE connections, and typing indicators. See `layout.client.tsx`.
+- **JSX → DOM** — Client scripts use JSX to create real DOM elements (via `jsx-dom`), not React virtual DOM. This gives you typed templating with zero framework overhead.
+- **SSE for Real-Time** — The `api/messages/route.ts` endpoint pushes random messages to demonstrate Server-Sent Events integration.
+
+## Learn More
+
+- [Examples overview](../README.md) — All available examples
+- [Developer Guide](../../GUIDE.md) — Core concepts and API reference
+- [Architecture Deep Dive](../../docs/ARCHITECTURE.md) — Technical internals
