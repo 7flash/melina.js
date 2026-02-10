@@ -70,7 +70,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </div>
 
                 {/* Messenger Widget — server-rendered shell, XState client manages content */}
-                <div id="messenger" className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3" style={{ viewTransitionName: 'messenger' }}>
+                <div id="messenger" data-melina-persist="messenger" className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3" style={{ viewTransitionName: 'messenger' }}>
                     {/* Panel — empty flex container, client script fills via replaceChildren */}
                     <div id="messenger-panel" className="w-[380px] h-[520px] rounded-2xl overflow-hidden shadow-2xl shadow-black/40 border border-white/10 bg-[#16162a] flex-col hidden" style={{ display: 'none' }}>
                         {/* SSR initial contact list for scraping by client script */}
