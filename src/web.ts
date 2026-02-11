@@ -1380,9 +1380,33 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
       }
 
       // Inject scripts before </body>
+      let clientScriptTag = '';
+      if (clientBundlePath) {
+        clientScriptTag = `
+        <script type="module">
+          import mount from '${clientBundlePath}';
+          if (typeof mount === 'function') {
+            const cleanup = mount();
+            if (cleanup) window.__melinaPageCleanup = cleanup;
+          }
+        </script>`;
+      }
+
+      // Also inject layout client scripts
+      let layoutClientTags = '';
+      for (const lcPath of layoutClientPaths) {
+        layoutClientTags += `
+        <script type="module">
+          import mount from '${lcPath}';
+          if (typeof mount === 'function') mount();
+        </script>`;
+      }
+
       const scripts = `
         <script id="__MELINA_META__" type="application/json">${JSON.stringify(pageMeta)}</script>
         <script src="${runtimePath}" type="module"></script>
+        ${clientScriptTag}
+        ${layoutClientTags}
       `;
 
       fullHtml = fullHtml.replace('</body>', `${scripts}</body>`);

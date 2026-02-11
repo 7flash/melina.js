@@ -249,7 +249,9 @@ function initializeLinkInterception() {
 
 async function bootstrap() {
     initializeLinkInterception();
-    await mountPage();
+    // Inline <script type="module"> tags in the HTML handle initial page/layout
+    // client mounting. The runtime only calls mountPage() on subsequent navigations.
+    layoutsInitialized = true;
 }
 
 if (document.readyState === 'loading') {
