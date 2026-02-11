@@ -113,8 +113,21 @@ const machine = setup({
         }),
         initContacts: assign(({ event }) => {
             if (event.type !== 'INIT_CONTACTS') return {};
+            const messages = new Map<number, Message[]>();
+            for (const c of event.contacts) {
+                if (c.lastMessage) {
+                    messages.set(c.id, [{
+                        id: c.id * 1000,
+                        contactId: c.id,
+                        text: c.lastMessage,
+                        incoming: true,
+                        timestamp: new Date(),
+                    }]);
+                }
+            }
             return {
                 contacts: event.contacts,
+                messages,
                 totalUnread: event.contacts.reduce((s, c) => s + c.unread, 0),
             };
         }),

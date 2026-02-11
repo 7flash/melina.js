@@ -149,17 +149,12 @@ async function navigate(href: string) {
             window.scrollTo(0, 0);
         };
 
-        if (document.startViewTransition) {
-            const transition = document.startViewTransition(() => updateDOM());
-            transition.finished.then(() => {
-                mountPage(didPartialSwap);
-                window.dispatchEvent(new CustomEvent('melina:navigated'));
-            });
-        } else {
-            updateDOM();
-            mountPage(didPartialSwap);
-            window.dispatchEvent(new CustomEvent('melina:navigated'));
-        }
+        // Run the DOM update directly — no View Transitions for partial swaps.
+        // View Transitions snapshot the entire viewport, causing untouched
+        // layout elements (like messenger) to visually flicker.
+        updateDOM();
+        mountPage(didPartialSwap);
+        window.dispatchEvent(new CustomEvent('melina:navigated'));
 
     } catch (error) {
         window.location.href = href;
@@ -226,16 +221,9 @@ function initializeLinkInterception() {
                     }
                 };
 
-                if (document.startViewTransition) {
-                    document.startViewTransition(() => updateDOM()).finished.then(() => {
-                        mountPage(didPartialSwap);
-                        window.dispatchEvent(new CustomEvent('melina:navigated'));
-                    });
-                } else {
-                    updateDOM();
-                    mountPage(didPartialSwap);
-                    window.dispatchEvent(new CustomEvent('melina:navigated'));
-                }
+                updateDOM();
+                mountPage(didPartialSwap);
+                window.dispatchEvent(new CustomEvent('melina:navigated'));
             })
             .catch(err => {
                 window.location.reload();

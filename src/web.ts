@@ -1268,8 +1268,8 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
 
       if (isStringMode) {
         // ─── String mode: components return raw HTML strings ───
-        // Page content is already a string, wrap with layouts
-        let content = pageContent as string;
+        // Page content is already a string, wrap in #melina-page-content then layouts
+        let content = `<div id="melina-page-content" style="display:contents">${pageContent as string}</div>`;
         for (let i = match.route.layouts.length - 1; i >= 0; i--) {
           const layoutPath = match.route.layouts[i];
           const layoutModule = await importSSR(layoutPath);
@@ -1289,7 +1289,8 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
         const React = await import('react');
         const ReactDOMServer = await import('react-dom/server');
 
-        let tree: any = pageContent;
+        // Wrap page content in #melina-page-content for partial swap
+        let tree: any = React.createElement('div', { id: 'melina-page-content', style: { display: 'contents' } }, pageContent);
 
         // Wrap with layouts (innermost to outermost)
         for (let i = match.route.layouts.length - 1; i >= 0; i--) {
