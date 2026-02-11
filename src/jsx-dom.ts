@@ -25,7 +25,45 @@ export function jsx(
         return tag(finalProps);
     }
 
-    const el = document.createElement(tag);
+    // SVG elements must be created with the SVG namespace
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const SVG_TAGS = new Set([
+        'svg', 'path', 'circle', 'ellipse', 'line', 'polyline', 'polygon',
+        'rect', 'g', 'defs', 'use', 'text', 'tspan', 'clipPath', 'mask',
+        'image', 'pattern', 'linearGradient', 'radialGradient', 'stop',
+        'filter', 'feGaussianBlur', 'feOffset', 'feMerge', 'feMergeNode',
+        'foreignObject', 'marker', 'symbol', 'animate', 'animateTransform',
+    ]);
+    const isSVG = SVG_TAGS.has(tag);
+    const el = isSVG
+        ? document.createElementNS(SVG_NS, tag)
+        : document.createElement(tag);
+
+    // React camelCase → SVG dash-case attribute mapping
+    const SVG_ATTR_MAP: Record<string, string> = {
+        strokeWidth: 'stroke-width',
+        strokeLinecap: 'stroke-linecap',
+        strokeLinejoin: 'stroke-linejoin',
+        strokeDasharray: 'stroke-dasharray',
+        strokeDashoffset: 'stroke-dashoffset',
+        strokeMiterlimit: 'stroke-miterlimit',
+        strokeOpacity: 'stroke-opacity',
+        fillOpacity: 'fill-opacity',
+        fillRule: 'fill-rule',
+        clipRule: 'clip-rule',
+        clipPath: 'clip-path',
+        fontFamily: 'font-family',
+        fontSize: 'font-size',
+        fontWeight: 'font-weight',
+        textAnchor: 'text-anchor',
+        dominantBaseline: 'dominant-baseline',
+        colorInterpolation: 'color-interpolation',
+        colorInterpolationFilters: 'color-interpolation-filters',
+        floodColor: 'flood-color',
+        floodOpacity: 'flood-opacity',
+        lightingColor: 'lighting-color',
+        baselineShift: 'baseline-shift',
+    };
 
     // Set attributes/properties
     if (props) {
@@ -34,9 +72,13 @@ export function jsx(
             if (value === null || value === undefined || value === false) continue;
 
             if (key === 'style' && typeof value === 'object') {
-                Object.assign(el.style, value);
+                Object.assign((el as HTMLElement).style, value);
             } else if (key === 'className' || key === 'class') {
-                el.className = String(value);
+                if (isSVG) {
+                    el.setAttribute('class', String(value));
+                } else {
+                    (el as HTMLElement).className = String(value);
+                }
             } else if (key === 'htmlFor') {
                 el.setAttribute('for', String(value));
             } else if (key === 'dangerouslySetInnerHTML') {
@@ -50,7 +92,9 @@ export function jsx(
             } else if (value === true) {
                 el.setAttribute(key, '');
             } else {
-                el.setAttribute(key, String(value));
+                // Map React camelCase SVG attributes to dash-case
+                const attr = isSVG ? (SVG_ATTR_MAP[key] || key) : key;
+                el.setAttribute(attr, String(value));
             }
         }
 
