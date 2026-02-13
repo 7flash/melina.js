@@ -1,4 +1,5 @@
 import { serve, UriTemplate } from "../../src/mcp";
+import { measure } from '@ments/utils';
 import { z } from "zod";
 
 const httpServer = serve({
@@ -148,4 +149,4 @@ const httpServer = serve({
   port: process.env.PORT ? parseInt(process.env.PORT) : 3000,
 });
 
-console.log(`MCP Server running at http://localhost:${httpServer.port}/mcp`);
+measure(() => `MCP Server running at http://localhost:${httpServer.port}/mcp`, 'MCP');

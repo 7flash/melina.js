@@ -35,7 +35,7 @@ export interface RouteMatch {
  */
 function filePathToPattern(filePath: string, appDir: string): { pattern: string; paramNames: string[] } {
     // Remove appDir prefix and page.tsx/page.ts suffix
-    let relativePath = path.relative(appDir, filePath);
+    let relativePath = path.relative(appDir, filePath).split(path.sep).join('/');
     // Remove page.tsx/page.ts or route.ts suffix
     relativePath = relativePath.replace(/(^|\/)(page|route)\.(tsx?|jsx?)$/, '');
 
@@ -47,7 +47,7 @@ function filePathToPattern(filePath: string, appDir: string): { pattern: string;
     // Convert [param] to :param and collect param names
     const paramNames: string[] = [];
     const pattern = '/' + relativePath
-        .split(path.sep)
+        .split('/')
         .map(segment => {
             // Handle dynamic segments like [id] or [slug]
             const match = segment.match(/^\[([^\]]+)\]$/);

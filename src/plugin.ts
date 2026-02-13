@@ -24,10 +24,10 @@ const clientComponentCache = new Map<string, Set<string>>();
 
 /**
  * Check if a file has 'use client' directive
- * Uses regex to match directive at start of line, avoiding false positives from comments
  */
 function hasUseClientDirective(content: string): boolean {
-    return /^['"]use client['"];?\s*$/m.test(content);
+    const firstLines = content.split('\n').slice(0, 5).join('\n');
+    return firstLines.includes("'use client'") || firstLines.includes('"use client"');
 }
 
 /**
@@ -69,9 +69,29 @@ function extractExportedComponents(content: string): string[] {
 }
 
 /**
- * Helper script injected into client components
+ * Transform client component source to auto-wrap with island()
+ * 
+ * Input:
+ * ```
+ * 'use client';
+ * export function Counter() { ... }
+ * ```
+ * 
+ * Output (for SSR):
+ * ```
+ * 'use client';
+ * function Counter__impl() { ... }
+ * export const Counter = __melina_island(Counter__impl, 'Counter');
+ * ```
  */
-const ISLAND_HELPER = `
+function transformClientComponent(content: string, filePath: string): string {
+    const components = extractExportedComponents(content);
+    if (components.length === 0) return content;
+
+    let transformed = content;
+
+    // Add island helper at the top (after 'use client')
+    const islandHelper = `
 // Auto-injected by Melina.js
 const __melina_isServer = typeof window === 'undefined';
 const __melina_island = (Component, name) => {
@@ -80,53 +100,31 @@ const __melina_island = (Component, name) => {
         return (props) => React.createElement('div', {
             'data-melina-island': name,
             'data-props': JSON.stringify(props).replace(/"/g, '&quot;'),
-            style: { display: 'contents' }
-        });
+        }, React.createElement('div', { style: { opacity: 0.7 } }, 'Loading ' + name + '...'));
     }
     return Component;
 };
 `;
 
-/**
- * Transform client component source to auto-wrap with island()
- */
-function transformClientComponent(content: string, filePath: string): string {
-    const components = extractExportedComponents(content);
-    if (components.length === 0) return content;
-
-    let transformed = content;
-
-    // Insert helper after 'use client' directive
+    // Insert after 'use client' directive
     transformed = transformed.replace(
         /(['"]use client['"];?\s*\n)/,
-        `$1${ISLAND_HELPER}\n`
+        `$1${islandHelper}\n`
     );
 
-    // Track if we handled default export
-    let defaultExportName: string | null = null;
-
-    // Check for named default export: export default function Name() {}
-    const defaultMatch = content.match(/export\s+default\s+function\s+([A-Z][a-zA-Z0-9]*)/);
-    if (defaultMatch) {
-        defaultExportName = defaultMatch[1];
-        transformed = transformed.replace(
-            /export\s+default\s+function\s+([A-Z][a-zA-Z0-9]*)/,
-            `function $1__impl`
-        );
-        // We append the export default at the end
-    }
-
-    // Transform identifiers
+    // Transform each export
     for (const name of components) {
-        if (name === defaultExportName) continue;
-
         // export function Name() -> function Name__impl()
         transformed = transformed.replace(
             new RegExp(`export\\s+function\\s+${name}\\s*\\(`),
             `function ${name}__impl(`
         );
 
-        // export const Name = -> const Name__impl =
+        // Add wrapped export at the end
+        transformed += `\nexport const ${name} = __melina_island(${name}__impl, '${name}');\n`;
+
+        // Handle export const Name = ...
+        // This is trickier - we need to rename the const and re-export
         const constPattern = new RegExp(`export\\s+const\\s+${name}\\s*=`);
         if (constPattern.test(content)) {
             transformed = transformed.replace(
@@ -136,84 +134,39 @@ function transformClientComponent(content: string, filePath: string): string {
         }
     }
 
-    // Append wrapped exports
-    for (const name of components) {
-        if (name === defaultExportName) continue;
-        transformed += `\nexport const ${name} = __melina_island(${name}__impl, '${name}');\n`;
-    }
-
-    // Append wrapped default export
-    if (defaultExportName) {
-        transformed += `\nexport default __melina_island(${defaultExportName}__impl, '${defaultExportName}');\n`;
+    // Handle default export
+    if (content.includes('export default')) {
+        const defaultMatch = content.match(/export\s+default\s+function\s+([A-Z][a-zA-Z0-9]*)/);
+        if (defaultMatch) {
+            const name = defaultMatch[1];
+            transformed = transformed.replace(
+                /export\s+default\s+function\s+([A-Z][a-zA-Z0-9]*)/,
+                `function ${name}__impl`
+            );
+            transformed += `\nexport default __melina_island(${name}__impl, '${name}');\n`;
+        }
     }
 
     return transformed;
 }
 
 /**
- * Attempt to resolve a file path with extensions
- */
-function resolveFile(basePath: string): string | null {
-    if (existsSync(basePath)) return basePath;
-    const extensions = ['.tsx', '.jsx', '.ts', '.js'];
-    for (const ext of extensions) {
-        if (existsSync(basePath + ext)) return basePath + ext;
-    }
-    return null;
-}
-
-/**
  * Melina.js Bun Plugin for Server-Side Rendering
  * 
  * Transforms 'use client' components during SSR build.
- * Implements "Isolated Dual-Build":
- * 1. Bundles/Transforms Client Components
- * 2. Externalizes everything else (Shared State, Server Logic) to preserve Singletons
  */
 export function melinaPlugin(): BunPlugin {
     return {
         name: 'melina-client-components',
 
         setup(build) {
-            // -----------------------------------------------------------------------
-            // 1. RESOLVE: Separate Client Components (Bundle) from Server/Shared (External)
-            // -----------------------------------------------------------------------
-            build.onResolve({ filter: /^\.{1,2}\// }, async (args) => {
-                const fullPath = path.resolve(path.dirname(args.importer), args.path);
-
-                // Try to resolve the actual file to check contents
-                const resolvedPath = resolveFile(fullPath);
-
-                if (resolvedPath && /\.(tsx|jsx)$/.test(resolvedPath)) {
-                    // Check if it's a client component
-                    try {
-                        const content = await Bun.file(resolvedPath).text();
-                        if (hasUseClientDirective(content)) {
-                            // IT IS A CLIENT COMPONENT:
-                            // Return the resolved path to bundle it inline
-                            console.log(`[Melina Plugin] Bundling client component: ${resolvedPath}`);
-                            return { path: resolvedPath };
-                        }
-                    } catch (e) {
-                        // ignore error, treat as external
-                    }
-                }
-
-                // IT IS SHARED/SERVER LOGIC:
-                // Mark as external so the SSR artifact imports it by absolute path at runtime.
-                // This preserves module identity (Singletons) across the app.
-                return { external: true, path: resolvedPath || fullPath };
-            });
-
-            // -----------------------------------------------------------------------
-            // 2. LOAD: Transform Client Components
-            // -----------------------------------------------------------------------
+            // Transform .tsx and .jsx files with 'use client'
             build.onLoad({ filter: /\.(tsx|jsx)$/ }, async (args) => {
                 const content = readFileSync(args.path, 'utf-8');
 
                 // Only transform client components
                 if (!hasUseClientDirective(content)) {
-                    return undefined;
+                    return undefined; // Let Bun handle normally
                 }
 
                 // Cache the exports for this file

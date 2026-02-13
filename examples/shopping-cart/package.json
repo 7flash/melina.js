@@ -1,0 +1,10 @@
+{
+    "name": "example-shopping-cart",
+    "private": true,
+    "scripts": {
+        "dev": "bun run server.ts"
+    },
+    "dependencies": {
+        "xstate": "^5.19.2"
+    }
+}

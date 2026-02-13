@@ -1,4 +1,5 @@
 'use client';
+import { measure } from '@ments/utils';
 
 /**
  * Global Audio State Store
@@ -68,7 +69,7 @@ function getGlobalAudioStore(): AudioStore {
 
     if (!window.__AUDIO_STORE__) {
         window.__AUDIO_STORE__ = createAudioStore();
-        console.log('[AudioState] Created global audio store');
+        measure(() => '[AudioState] Created global audio store', 'AudioState');
     }
 
     return window.__AUDIO_STORE__;
@@ -80,7 +81,7 @@ function startSimulation() {
     if (window.__AUDIO_INTERVAL__) return;
 
     window.__AUDIO_INTERVAL__ = true;
-    console.log('[AudioState] Starting simulation interval');
+    measure(() => '[AudioState] Starting simulation interval', 'AudioState');
 
     const store = getGlobalAudioStore();
 
