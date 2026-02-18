@@ -5,89 +5,41 @@
 [![npm version](https://img.shields.io/npm/v/melina)](https://www.npmjs.com/package/melina)
 [![Bun](https://img.shields.io/badge/runtime-Bun-f9f1e1)](https://bun.sh)
 
-Melina.js is a Bun-native web framework with Next.js-style file routing and a dual-mode client architecture. Server pages render HTML with JSX. Client interactivity is added via **mount scripts** — either with vanilla JSX-to-DOM (zero-framework) or React (auto-detected from imports).
+Melina.js is a Bun-native web framework with Next.js-style file routing. Server pages render HTML with JSX, client interactivity is added via **mount scripts** — vanilla JSX that compiles to real DOM elements with zero framework overhead.
 
 ## ✨ Features
 
-- 📁 **File-based Routing** — Next.js App Router style (`app/page.tsx` → `/`)
-- ⚡ **In-Memory Builds** — No `dist/` folder, assets built and served from RAM
-- 🎭 **Dual-Mode Client JSX** — Vanilla JSX-to-DOM (default) or React (auto-detected)
-- 🔄 **View Transitions** — SPA-like navigation with the View Transitions API
-- 🎨 **Tailwind CSS v4** — Built-in support for CSS-first configuration
-- 🌐 **Import Maps** — Browser-native module resolution, no vendor bundles
+- 📁 **File-based routing** — Next.js App Router style (`app/page.tsx` → `/`)
+- ⚡ **In-memory builds** — No `dist/` folder, assets built and served from RAM
+- � **Mount scripts** — `page.client.tsx` adds interactivity to server-rendered HTML
+- 🎨 **Tailwind CSS v4** — Built-in PostCSS + Tailwind support
+- 🌐 **Import maps** — Browser-native module resolution, no vendor bundles
+- 🔄 **Nested layouts** — Automatic layout composition with `layout.tsx`
+- ⚡ **API routes** — `app/api/*/route.ts` for backend endpoints
 
 ## 🚀 Quick Start
 
 ```bash
-# Install
-bun add melina
-
-# Create app structure
-mkdir -p app
-
-# Create a page
-cat > app/page.tsx << 'EOF'
-export default function Home() {
-  return <h1>Hello Melina! 🦊</h1>;
-}
-EOF
-
-# Create layout
-cat > app/layout.tsx << 'EOF'
-export default function Layout({ children }) {
-  return (
-    <html>
-      <body>
-        <main id="melina-page-content">{children}</main>
-      </body>
-    </html>
-  );
-}
-EOF
+# Create a new project
+npx melina init my-app
+cd my-app
+bun install
 
 # Start dev server
-bunx melina start
+bun run server.ts
 ```
 
-Open http://localhost:3000 🎉
+Or from scratch with the programmatic API:
 
-## 🎭 Client Interactivity
+```ts
+// server.ts
+import { start } from 'melina';
 
-Add a `page.client.tsx` or `layout.client.tsx` file alongside the server component to add interactivity:
-
-```tsx
-// app/page.client.tsx — runs in the browser
-import { useState } from 'melina/client';
-
-function Counter() {
-  const [count, setCount] = useState(0);
-  return <button onClick={() => setCount(c => c + 1)}>Count: {count}</button>;
-}
-
-// Mount into the server-rendered page
-const el = document.getElementById('counter-root');
-if (el) render(<Counter />, el);
-```
-
-### How the dual-mode works
-
-Melina auto-detects which mode to use **per file** based on imports:
-
-| Import | Mode | What happens |
-|--------|------|--------------|
-| `melina/client` | **Vanilla** | JSX compiles to real DOM elements. No framework, no VDOM. |
-| `react` | **React** | React + ReactDOM loaded via import maps. Full React ecosystem. |
-
-## 📖 Documentation
-
-- **[Developer Guide](./GUIDE.md)** — Core concepts, best practices, API reference
-- **[Architecture Deep Dive](./docs/ARCHITECTURE.md)** — Technical internals
-
-## 🔧 CLI
-
-```bash
-melina init <name>  # Create new project
-melina start        # Start dev server
+await start({
+  appDir: './app',
+  port: 3000,
+  defaultTitle: 'My App',
+});
 ```
 
 ## 📦 Project Structure
@@ -95,35 +47,216 @@ melina start        # Start dev server
 ```
 my-app/
 ├── app/
-│   ├── layout.tsx         # Root layout (server)
-│   ├── layout.client.tsx  # Layout mount script (client)
-│   ├── page.tsx           # Home page (/)
-│   ├── page.client.tsx    # Home page mount script
+│   ├── layout.tsx           # Root layout (server-rendered shell)
+│   ├── layout.client.tsx    # Layout mount script (persistent client JS)
+│   ├── page.tsx             # Home page (/)
+│   ├── page.client.tsx      # Home page mount script
+│   ├── globals.css          # Global styles (Tailwind CSS)
 │   ├── about/
-│   │   └── page.tsx       # /about
-│   ├── api/
-│   │   └── hello/
-│   │       └── route.ts   # API route
-│   └── globals.css        # Global styles
+│   │   └── page.tsx         # /about
+│   ├── post/[id]/
+│   │   └── page.tsx         # /post/:id (dynamic route)
+│   └── api/
+│       └── messages/
+│           └── route.ts     # API endpoint
+├── server.ts                # Entry point
 └── package.json
+```
+
+## 🏗 Architecture
+
+### Server Pages (`page.tsx`)
+
+Pages are server-rendered JSX components. They can use async/await, access databases, read files — anything that runs on the server.
+
+```tsx
+// app/page.tsx
+import React from 'react';
+
+export default function HomePage() {
+  const posts = getPostsFromDB(); // Server-side data fetching
+
+  return (
+    <div>
+      <h1>Welcome</h1>
+      {posts.map(post => (
+        <article key={post.id} className="post-card" data-post-id={post.id}>
+          <h2>{post.title}</h2>
+          <p>{post.body}</p>
+        </article>
+      ))}
+      <div id="load-more" />
+    </div>
+  );
+}
+```
+
+### Layouts (`layout.tsx`)
+
+Root layout wraps all pages. Must include `{children}` for the page content.
+
+```tsx
+// app/layout.tsx
+import React from 'react';
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>My App</title>
+      </head>
+      <body>
+        <nav>
+          <a href="/">Home</a>
+          <a href="/about">About</a>
+        </nav>
+        <main>{children}</main>
+      </body>
+    </html>
+  );
+}
+```
+
+Nested layouts work automatically — just add `layout.tsx` in any subdirectory.
+
+### Client Mount Scripts (`page.client.tsx`)
+
+Mount scripts add interactivity to server-rendered HTML. They export a default `mount()` function that Melina auto-invokes when the page loads. JSX in mount scripts compiles to **real DOM elements** (not virtual DOM).
+
+```tsx
+// app/page.client.tsx
+export default function mount(): () => void {
+  const feedPosts = document.getElementById('feed-posts');
+  if (!feedPosts) return () => {};
+
+  // Add click handlers to server-rendered elements
+  function handleClick(e: Event) {
+    const card = (e.target as Element).closest('.post-card') as HTMLElement;
+    if (!card) return;
+    window.location.href = `/post/${card.dataset.postId}`;
+  }
+
+  feedPosts.addEventListener('click', handleClick);
+
+  // JSX creates real DOM elements — append them directly
+  const loadMore = document.getElementById('load-more');
+  if (loadMore) {
+    const btn = <button className="load-btn">Load More</button>;
+    loadMore.appendChild(btn);
+  }
+
+  // Return cleanup function (called on navigation away)
+  return () => {
+    feedPosts.removeEventListener('click', handleClick);
+  };
+}
+```
+
+**Key concepts:**
+- `page.client.tsx` — Runs per-page. Mounts when page loads, cleans up on navigation.
+- `layout.client.tsx` — Runs once. Persists across page navigations (great for floating widgets, global UI).
+- JSX compiles to real `document.createElement()` calls — no virtual DOM, no framework.
+- The `mount()` return value is a cleanup function for event listeners, timers, etc.
+
+### API Routes (`route.ts`)
+
+Export HTTP method handlers from `app/api/*/route.ts`:
+
+```ts
+// app/api/messages/route.ts
+
+export async function GET(req: Request) {
+  const messages = await db.getMessages();
+  return Response.json(messages);
+}
+
+export async function POST(req: Request, { params }) {
+  const body = await req.json();
+  await db.createMessage(body);
+  return Response.json({ ok: true });
+}
+```
+
+### Dynamic Routes
+
+Use `[param]` directory names for dynamic segments:
+
+```
+app/post/[id]/page.tsx  →  /post/:id
+app/user/[userId]/page.tsx  →  /user/:userId
+```
+
+Access params in the page component:
+
+```tsx
+export default function PostPage({ params }: { params: { id: string } }) {
+  return <h1>Post #{params.id}</h1>;
+}
+```
+
+## 🎨 Styling
+
+Melina has built-in Tailwind CSS v4 + PostCSS support. Just add a `globals.css`:
+
+```css
+/* app/globals.css */
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #0a0a0f;
+  --color-accent: #6366f1;
+}
+```
+
+Melina auto-discovers `globals.css`, `global.css`, or `app.css` in the app directory.
+
+## 🔧 API Reference
+
+### `start(options)`
+
+Start a Melina server with file-based routing:
+
+```ts
+import { start } from 'melina';
+
+await start({
+  appDir: './app',     // Path to app directory (default: './app')
+  port: 3000,          // Port number (default: 3000, or BUN_PORT env)
+  defaultTitle: 'My App',
+});
+```
+
+### `serve(handler, options)` + `createAppRouter(options)`
+
+Lower-level API for custom setups:
+
+```ts
+import { serve, createAppRouter } from 'melina';
+
+const router = createAppRouter({
+  appDir: './app',
+  defaultTitle: 'My App',
+  globalCss: './app/globals.css',
+});
+
+serve(router, { port: 3000 });
+```
+
+### CLI
+
+```bash
+npx melina init <project-name>  # Create new project from template
+npx melina start                # Start dev server in current directory
 ```
 
 ## 📋 Examples
 
 | Example | Description |
 |---------|-------------|
-| [`shopping-cart`](./examples/shopping-cart) | E-commerce cart with server/client mount scripts |
-| [`social-feed`](./examples/social-feed) | Social feed with SSE messaging and View Transitions |
-
-## 🤔 Why Melina?
-
-| Traditional SPA | Melina.js |
-|-----------------|-----------|
-| Bundle everything | Server-render pages, add JS only where needed |
-| Full page refresh or client routing | View Transitions for smooth navigation |
-| Complex Webpack/Vite config | Zero config, Bun-native builds |
-| 100KB+ vendor chunks | Browser-native import maps |
-| React required everywhere | React optional — vanilla JSX-to-DOM by default |
+| [`shopping-cart`](./examples/shopping-cart) | E-commerce with cart state managed via XState in mount scripts |
+| [`social-feed`](./examples/social-feed) | Social feed with messenger widget, infinite scroll, SSE messaging |
 
 ## License
 

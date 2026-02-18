@@ -1,6 +1,6 @@
 {
   "name": "melina",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "A lightweight web framework for Bun with Next.js-style routing and zero-config builds.",
   "module": "./src/web.ts",
   "main": "./src/web.ts",
@@ -11,8 +11,8 @@
     "src",
     "bin",
     "docs",
-    "GUIDE.md",
-    "README.md"
+    "README.md",
+    "SKILL.md"
   ],
   "exports": {
     ".": "./src/web.ts",
@@ -38,9 +38,7 @@
     "web",
     "ssr",
     "jsx",
-    "nextjs",
     "app-router",
-    "react",
     "view-transitions",
     "melina"
   ],
@@ -53,14 +51,11 @@
     "@types/react-dom": "^19.2.3"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.11.0",
-    "@solana/kit": "^2.1.0",
     "@tailwindcss/postcss": "^4.1.10",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "ts-dedent": "^2.2.0",
-    "zod": "^3.24.4"
+    "ts-dedent": "^2.2.0"
   }
 }
