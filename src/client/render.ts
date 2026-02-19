@@ -467,6 +467,15 @@ function getNextSibling(fiber: Fiber, parentNode: Node): Node | null {
 export async function navigate(href: string): Promise<void> {
     if (typeof window === 'undefined') return;
     try {
+        // Cleanup previous page-level scripts
+        const cleanups = (window as any).__melinaCleanups__ || [];
+        for (const { type, cleanup } of cleanups) {
+            if (type === 'page') {
+                try { cleanup(); } catch (e) { /* ignore */ }
+            }
+        }
+        (window as any).__melinaCleanups__ = cleanups.filter((c: any) => c.type !== 'page');
+
         const response = await fetch(href, { headers: { 'X-Melina-Nav': '1' } });
         const html = await response.text();
         const newDoc = new DOMParser().parseFromString(html, 'text/html');
@@ -474,8 +483,18 @@ export async function navigate(href: string): Promise<void> {
         window.history.pushState({}, '', href);
         document.title = newDoc.title;
 
+        // Update stylesheet if changed
+        const newStyleLink = newDoc.querySelector('link[rel="stylesheet"]') as HTMLLinkElement | null;
+        const curStyleLink = document.querySelector('link[rel="stylesheet"]') as HTMLLinkElement | null;
+        if (newStyleLink && curStyleLink && newStyleLink.href !== curStyleLink.href) {
+            curStyleLink.href = newStyleLink.href;
+        } else if (newStyleLink && !curStyleLink) {
+            document.head.appendChild(newStyleLink);
+        }
+
+        // Extract new body content
         const fragment = document.createDocumentFragment();
-        while (newDoc.body.firstChild) fragment.appendChild(newDoc.body.firstChild);
+        while (newDoc.body.firstChild) fragment.appendChild(document.adoptNode(newDoc.body.firstChild));
 
         const update = () => {
             document.body.replaceChildren(fragment);
@@ -487,6 +506,20 @@ export async function navigate(href: string): Promise<void> {
             await document.startViewTransition(update).finished;
         } else {
             update();
+        }
+
+        // Execute inline scripts from the new page (params + module bootstraps)
+        const scripts = Array.from(document.body.querySelectorAll('script'));
+        for (const oldScript of scripts) {
+            const newScript = document.createElement('script');
+            // Copy attributes
+            for (const attr of Array.from(oldScript.attributes)) {
+                newScript.setAttribute(attr.name, attr.value);
+            }
+            if (oldScript.textContent) {
+                newScript.textContent = oldScript.textContent;
+            }
+            oldScript.parentNode?.replaceChild(newScript, oldScript);
         }
     } catch (e) {
         window.location.href = href;

@@ -187,6 +187,20 @@ export async function buildScript(filePath: string, allExternal = false): Promis
         return buildCache[filePath].outputPath;
     }
 
+    const existing = buildInFlight.get(filePath);
+    if (existing) return existing;
+
+    const promise = _buildScriptImpl(absolutePath, filePath, allExternal);
+    buildInFlight.set(filePath, promise);
+    try {
+        return await promise;
+    } finally {
+        buildInFlight.delete(filePath);
+    }
+}
+
+async function _buildScriptImpl(absolutePath: string, filePath: string, allExternal: boolean): Promise<string> {
+
     let packageJson: any;
     try {
         packageJson = (await import(path.resolve(process.cwd(), 'package.json'), { assert: { type: 'json' } })).default;
@@ -267,6 +281,20 @@ export async function buildStyle(filePath: string): Promise<string> {
         return buildCache[filePath].outputPath;
     }
 
+    const existing = buildInFlight.get(filePath);
+    if (existing) return existing;
+
+    const promise = _buildStyleImpl(absolutePath, filePath);
+    buildInFlight.set(filePath, promise);
+    try {
+        return await promise;
+    } finally {
+        buildInFlight.delete(filePath);
+    }
+}
+
+async function _buildStyleImpl(absolutePath: string, filePath: string): Promise<string> {
+
     const ext = path.extname(absolutePath).toLowerCase();
     const baseName = path.basename(absolutePath, ext);
 
@@ -324,6 +352,20 @@ export async function buildAsset(file?: BunFile): Promise<string> {
     if (!isDev && buildCache[filePath]) {
         return buildCache[filePath].outputPath;
     }
+
+    const existing = buildInFlight.get(filePath);
+    if (existing) return existing;
+
+    const promise = _buildAssetImpl(file, filePath);
+    buildInFlight.set(filePath, promise);
+    try {
+        return await promise;
+    } finally {
+        buildInFlight.delete(filePath);
+    }
+}
+
+async function _buildAssetImpl(file: BunFile, filePath: string): Promise<string> {
 
     const ext = path.extname(filePath).toLowerCase();
     const baseName = path.basename(filePath, ext);

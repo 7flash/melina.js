@@ -328,10 +328,12 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
 
             const clientScriptTags: string[] = [];
             if (clientScriptUrls.length > 0) {
+                const paramsJson = JSON.stringify(match.params);
                 const bootstrapLines = clientScriptUrls.map(({ url, type }) => {
-                    return `  import('${url}').then(m => { if (typeof m.default === 'function') { const cleanup = m.default(); if (typeof cleanup === 'function') { window.__melinaCleanups__ = window.__melinaCleanups__ || []; window.__melinaCleanups__.push({ type: '${type}', cleanup }); } } }).catch(e => console.error('[Melina] Failed to mount ${type} script:', e));`;
+                    return `  import('${url}').then(m => { if (typeof m.default === 'function') { const cleanup = m.default({ params: window.__MELINA_PARAMS__ }); if (typeof cleanup === 'function') { window.__melinaCleanups__ = window.__melinaCleanups__ || []; window.__melinaCleanups__.push({ type: '${type}', cleanup }); } } }).catch(e => console.error('[Melina] Failed to mount ${type} script:', e));`;
                 });
                 clientScriptTags.push(
+                    `<script>window.__MELINA_PARAMS__ = ${paramsJson};</script>`,
                     `<script type="module">\n${bootstrapLines.join('\n')}\n</script>`
                 );
             }
