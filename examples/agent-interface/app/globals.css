@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+@theme {
+    /* Colors */
+    --color-background: #0a0a0f;
+    --color-surface: #111118;
+    --color-secondary: #16161e;
+    --color-tertiary: #1c1c28;
+    --color-hover: #22222e;
+
+    --color-border: rgba(255, 255, 255, 0.08);
+
+    --color-foreground: #e4e4e7;
+    --color-muted: #71717a;
+    --color-accent: #6366f1;
+    --color-accent-hover: #818cf8;
+
+    /* Fonts */
+    --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* Base styles */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+html {
+    color-scheme: dark;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Animations */
+@keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slide-in-from-bottom {
+    from { transform: translateY(8px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes pulse-subtle {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.fade-in {
+    animation: fade-in 0.3s ease-out;
+}
+
+.animate-in {
+    animation: slide-in-from-bottom 0.3s ease-out;
+}
+
+.slide-in-from-bottom-5 {
+    animation: slide-in-from-bottom 0.3s ease-out;
+}
