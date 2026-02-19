@@ -9,13 +9,19 @@
 
 // ─── Toast Component ─────────────────────────────────────────────────────────
 
-function Toast({ message, onDone }: { message: string; onDone: () => void }) {
-    const el = (
+import { render } from 'melina/client';
+
+function createToast(message: string, onDone: () => void) {
+    const vnode = (
         <div className="toast-enter bg-surface border border-border-light rounded-xl px-5 py-3 shadow-2xl flex items-center gap-3 text-sm">
             <span className="text-success text-lg">✓</span>
             <span className="text-white">{message}</span>
         </div>
-    ) as HTMLElement;
+    );
+
+    const container = document.createElement('div');
+    render(vnode, container);
+    const el = container.firstElementChild as HTMLElement;
 
     setTimeout(() => {
         el.classList.remove('toast-enter');
@@ -76,11 +82,8 @@ export default function mount() {
 
         // Toast
         if (toastContainer) {
-            const toast = Toast({
-                message: `${product.name} added to cart`,
-                onDone: () => { },
-            });
-            toastContainer.appendChild(toast);
+            const toastEl = createToast(`${product.name} added to cart`, () => { });
+            toastContainer.appendChild(toastEl);
         }
     }
 

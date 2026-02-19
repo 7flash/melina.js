@@ -7,6 +7,8 @@
  * JSX here creates real DOM elements (not virtual DOM).
  */
 
+import { render as mountVNode } from 'melina/client';
+
 // Post data for generating more
 const authors = [
     { name: 'Sarah Chen', handle: '@sarahc' },
@@ -166,8 +168,12 @@ export default function mount(): () => void {
             for (let i = 0; i < 5; i++) {
                 postCount++;
                 const post = generatePost(postCount);
-                const card = createPostCard(post);
-                feedPosts!.appendChild(card);
+                const cardVNode = createPostCard(post);
+                const tempDiv = document.createElement('div');
+                mountVNode(cardVNode, tempDiv);
+                if (tempDiv.firstElementChild) {
+                    feedPosts!.appendChild(tempDiv.firstElementChild);
+                }
             }
 
             loading = false;

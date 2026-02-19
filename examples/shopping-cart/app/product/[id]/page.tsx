@@ -4,7 +4,6 @@
  * Dynamic route: /product/:id
  * Renders a full product page with descriptions and specs.
  */
-import React from 'react';
 
 const products: Record<number, any> = {
     1: { id: 1, name: 'Wireless Noise-Cancelling Headphones', price: 299.99, image: 'https://picsum.photos/seed/headphones/800/800', category: 'Audio', rating: 4.8, reviews: 1247, description: 'Premium over-ear headphones with adaptive noise cancellation, 30-hour battery life, and Hi-Res Audio support. Multipoint connection lets you switch between devices seamlessly.' },

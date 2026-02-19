@@ -4,9 +4,8 @@
  * Renders the page shell with header and cart icon.
  * The cart drawer is managed entirely by layout.client.tsx.
  */
-import React from 'react';
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: any }) {
     return (
         <html lang="en">
             <head>

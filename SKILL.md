@@ -5,7 +5,7 @@ description: Bun-native web framework with file routing. Use this for building s
 
 # Melina.js — Framework Skill
 
-Melina.js is a Bun-native web framework. It renders pages on the server with JSX, and adds client interactivity via **mount scripts** — vanilla JSX that compiles to real DOM elements.
+Melina.js is a Bun-native web framework. It renders pages on the server with JSX, and adds client interactivity via **mount scripts** — vanilla JSX that compiles to VNodes with a lightweight runtime.
 
 ## When to Use
 
@@ -81,8 +81,6 @@ app/
 Pages render on the server. They can use async/await and access server resources.
 
 ```tsx
-import React from 'react';
-
 export default function HomePage() {
   return (
     <div>
@@ -98,9 +96,7 @@ export default function HomePage() {
 Every app needs a root layout. It receives `{children}` for the current page.
 
 ```tsx
-import React from 'react';
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: any }) {
   return (
     <html lang="en">
       <head>
@@ -121,10 +117,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 Mount scripts add interactivity to server-rendered HTML. They export a default `mount()` function. Melina auto-invokes it when the page loads.
 
-**JSX in mount scripts compiles to real DOM elements** (not virtual DOM). You can `document.body.appendChild(<div>Hello</div>)` directly.
+**JSX in mount scripts compiles to VNodes** which are rendered using `render`.
 
 ```tsx
 // app/page.client.tsx
+import { render } from 'melina/client';
+
 export default function mount(): () => void {
   const root = document.getElementById('interactive-root');
   if (!root) return () => {};
@@ -135,13 +133,13 @@ export default function mount(): () => void {
   }
   root.addEventListener('click', handleClick);
 
-  // JSX creates real DOM elements
+  // JSX creates VNodes — render them to the DOM
   const widget = (
     <div className="widget">
       <button onClick={() => alert('Hello!')}>Click me</button>
     </div>
   );
-  root.appendChild(widget);
+  render(widget, root);
 
   // Return cleanup function (called on page navigation)
   return () => {
@@ -154,8 +152,8 @@ export default function mount(): () => void {
 - `page.client.tsx` — Per-page. Mounts on load, cleans up on navigation away.
 - `layout.client.tsx` — Persistent. Runs once, survives across page navigations.
 - The return value of `mount()` is a cleanup function.
-- NO React hooks (`useState`, `useEffect`). This is vanilla DOM manipulation.
-- Use libraries like XState for state management if needed.
+- Uses `melina/client` runtime (VDOM).
+- Use `render(vnode, container)` to mount dynamic content.
 
 ### API Route (`route.ts`)
 
@@ -233,9 +231,8 @@ const imgUrl = await buildAsset(Bun.file('./icon.png')); // Static asset → has
 ```tsx
 // page.client.tsx
 export default function mount() {
-  const container = document.getElementById('posts');
   const sentinel = document.getElementById('load-more');
-  if (!container || !sentinel) return () => {};
+  if (!sentinel) return () => {};
 
   const observer = new IntersectionObserver((entries) => {
     if (entries[0].isIntersecting) loadMorePosts();
@@ -291,8 +288,8 @@ bgr --stop my-app
 
 ## Important Notes
 
-1. Pages use React JSX for **server rendering only** (React.createElement → HTML string).
-2. Client mount scripts use **jsx-dom** (JSX → real DOM elements). They are NOT React components.
+1. Pages use `melina` VDOM for **server rendering**.
+2. Client mount scripts use `melina/client` VDOM + `render`.
 3. The framework auto-discovers routes at startup from the `app/` directory.
 4. CSS is processed with PostCSS + autoprefixer + Tailwind CSS v4.
 5. All built assets are served from memory — no `dist/` or `build/` directory.

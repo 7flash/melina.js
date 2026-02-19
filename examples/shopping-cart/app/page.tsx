@@ -4,7 +4,6 @@
  * Renders the product grid as HTML. Each product card has data attributes
  * for the client script to read. Add-to-cart interactivity lives in page.client.tsx.
  */
-import React from 'react';
 
 interface Product {
     id: number;

@@ -12,6 +12,7 @@ import { unlink } from 'fs/promises';
 import { measure } from "./utils";
 import { dedent } from "ts-dedent";
 import { discoverRoutes, matchRoute, type Route, type RouteMatch } from "./router";
+import { createElement, renderToString } from "./client/index";
 
 console.log('🦊 [Melina] Ready');
 
@@ -1009,12 +1010,8 @@ export async function renderPage(options: RenderPageOptions): Promise<string> {
   //Server-side render the component
   let serverHtml = '';
   try {
-    // Import React for SSR
-    const React = await import('react');
-    const ReactDOMServer = await import('react-dom/server');
-
-    serverHtml = ReactDOMServer.renderToString(
-      React.createElement(Component, { ...props, params })
+    serverHtml = renderToString(
+      createElement(Component, { ...props, params })
     );
   } catch (error) {
     console.warn('SSR failed, will use client-side rendering only:', error);
@@ -1151,12 +1148,8 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
         throw new Error(`No default export found in ${match.route.filePath}`);
       }
 
-      // Import React for SSR (server-side only)
-      const React = await import('react');
-      const ReactDOMServer = await import('react-dom/server');
-
       // Build the component tree with nested layouts
-      let tree = React.createElement(PageComponent, { params: match.params });
+      let tree = createElement(PageComponent, { params: match.params });
 
       // Wrap with layouts (innermost to outermost)
       for (let i = match.route.layouts.length - 1; i >= 0; i--) {
@@ -1165,12 +1158,12 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
         const LayoutComponent = layoutModule.default;
 
         if (LayoutComponent) {
-          tree = React.createElement(LayoutComponent, { children: tree });
+          tree = createElement(LayoutComponent, { children: tree });
         }
       }
 
       // Render to HTML
-      const html = ReactDOMServer.renderToString(tree);
+      const html = renderToString(tree);
 
       // Build CSS
       let stylesVirtualPath = '';

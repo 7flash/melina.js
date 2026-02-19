@@ -4,7 +4,6 @@
  * This renders the initial HTML for the feed.
  * Client interactivity (likes, infinite scroll) is in page.client.tsx
  */
-import React from 'react';
 
 // Generate mock posts (server-side data)
 function generatePosts(count: number, offset: number = 0) {

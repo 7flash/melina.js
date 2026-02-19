@@ -5,7 +5,6 @@
  * with contacts sidebar and chat area. Client interactivity
  * (selecting contacts, sending messages, SSE) is in page.client.tsx.
  */
-import React from 'react';
 
 // Shared contacts data (same as layout.tsx)
 const contacts = [

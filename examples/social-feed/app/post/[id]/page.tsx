@@ -1,7 +1,6 @@
 /**
  * Post Detail Page — SSR page for individual post
  */
-import React from 'react';
 
 // Mock data (same generator as home page)
 function getPost(id: number) {

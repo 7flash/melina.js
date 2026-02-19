@@ -199,12 +199,14 @@ function CartContent() {
 
 // ─── Render ──────────────────────────────────────────────────────────────────
 
+import { render as mountVNode } from 'melina/client';
+
 function render() {
     const container = document.getElementById('cart-content');
     if (!container) return;
 
-    // Replace entire cart content (no diffing needed — state is authoritative)
-    container.replaceChildren(CartContent() as Node);
+    // Mount VNode tree to container (clears existing content)
+    mountVNode(CartContent(), container as HTMLElement);
 
     // Update badge in header
     const badge = document.getElementById('cart-badge');

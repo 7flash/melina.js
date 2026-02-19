@@ -1,6 +1,6 @@
 {
   "name": "melina",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "A lightweight web framework for Bun with Next.js-style routing and zero-config builds.",
   "module": "./src/web.ts",
   "main": "./src/web.ts",
@@ -17,6 +17,10 @@
   "exports": {
     ".": "./src/web.ts",
     "./web": "./src/web.ts",
+    "./client": "./src/client/index.ts",
+    "./client/jsx-runtime": "./src/client/jsx-runtime.ts",
+    "./client/jsx-dev-runtime": "./src/client/jsx-dev-runtime.ts",
+    "./jsx-dom": "./src/jsx-dom.ts",
     "./Link": "./src/Link.tsx",
     "./utils": "./src/utils.ts"
   },
@@ -46,16 +50,12 @@
   "private": false,
   "sideEffects": false,
   "devDependencies": {
-    "@types/bun": "latest",
-    "@types/react": "^19.2.10",
-    "@types/react-dom": "^19.2.3"
+    "@types/bun": "latest"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.10",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
     "ts-dedent": "^2.2.0"
   }
 }

@@ -4,7 +4,6 @@
  * Renders the page shell. The messenger widget HTML is included here
  * so it's server-rendered. Interactivity comes from layout.client.tsx.
  */
-import React from 'react';
 
 // Initial contacts data (shared with layout.client.tsx)
 const contacts = [
@@ -24,7 +23,7 @@ function avatarBg(status: string) {
     return 'linear-gradient(135deg, #6b7280, #9ca3af)';
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: any }) {
     const totalUnread = contacts.reduce((sum, c) => sum + c.unread, 0);
 
     return (

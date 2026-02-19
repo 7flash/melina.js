@@ -5,13 +5,13 @@
 [![npm version](https://img.shields.io/npm/v/melina)](https://www.npmjs.com/package/melina)
 [![Bun](https://img.shields.io/badge/runtime-Bun-f9f1e1)](https://bun.sh)
 
-Melina.js is a Bun-native web framework with Next.js-style file routing. Server pages render HTML with JSX, client interactivity is added via **mount scripts** — vanilla JSX that compiles to real DOM elements with zero framework overhead.
+Melina.js is a Bun-native web framework with Next.js-style file routing. Server pages render HTML with JSX, client interactivity is added via **mount scripts** — vanilla JSX that compiles to lightweight VNodes with a micro-runtime for efficient updates.
 
 ## ✨ Features
 
 - 📁 **File-based routing** — Next.js App Router style (`app/page.tsx` → `/`)
 - ⚡ **In-memory builds** — No `dist/` folder, assets built and served from RAM
-- � **Mount scripts** — `page.client.tsx` adds interactivity to server-rendered HTML
+-  **Mount scripts** — `page.client.tsx` adds interactivity to server-rendered HTML
 - 🎨 **Tailwind CSS v4** — Built-in PostCSS + Tailwind support
 - 🌐 **Import maps** — Browser-native module resolution, no vendor bundles
 - 🔄 **Nested layouts** — Automatic layout composition with `layout.tsx`
@@ -71,7 +71,6 @@ Pages are server-rendered JSX components. They can use async/await, access datab
 
 ```tsx
 // app/page.tsx
-import React from 'react';
 
 export default function HomePage() {
   const posts = getPostsFromDB(); // Server-side data fetching
@@ -97,9 +96,8 @@ Root layout wraps all pages. Must include `{children}` for the page content.
 
 ```tsx
 // app/layout.tsx
-import React from 'react';
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: any }) {
   return (
     <html lang="en">
       <head>
@@ -123,10 +121,12 @@ Nested layouts work automatically — just add `layout.tsx` in any subdirectory.
 
 ### Client Mount Scripts (`page.client.tsx`)
 
-Mount scripts add interactivity to server-rendered HTML. They export a default `mount()` function that Melina auto-invokes when the page loads. JSX in mount scripts compiles to **real DOM elements** (not virtual DOM).
+Mount scripts add interactivity to server-rendered HTML. They export a default `mount()` function that Melina auto-invokes when the page loads. JSX in mount scripts compiles to **VNodes** which can be mounted using `render`.
 
 ```tsx
 // app/page.client.tsx
+import { render } from 'melina/client';
+
 export default function mount(): () => void {
   const feedPosts = document.getElementById('feed-posts');
   if (!feedPosts) return () => {};
@@ -140,11 +140,11 @@ export default function mount(): () => void {
 
   feedPosts.addEventListener('click', handleClick);
 
-  // JSX creates real DOM elements — append them directly
+  // JSX creates VNodes — mount them using render()
   const loadMore = document.getElementById('load-more');
   if (loadMore) {
-    const btn = <button className="load-btn">Load More</button>;
-    loadMore.appendChild(btn);
+    // Renders the button into the load-more container
+    render(<button className="load-btn">Load More</button>, loadMore);
   }
 
   // Return cleanup function (called on navigation away)
@@ -157,7 +157,7 @@ export default function mount(): () => void {
 **Key concepts:**
 - `page.client.tsx` — Runs per-page. Mounts when page loads, cleans up on navigation.
 - `layout.client.tsx` — Runs once. Persists across page navigations (great for floating widgets, global UI).
-- JSX compiles to real `document.createElement()` calls — no virtual DOM, no framework.
+- JSX compiles to VNodes via `melina/client`.
 - The `mount()` return value is a cleanup function for event listeners, timers, etc.
 
 ### API Routes (`route.ts`)
