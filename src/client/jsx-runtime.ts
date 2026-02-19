@@ -6,3 +6,4 @@
  * Bun will auto-import from `melina/client/jsx-runtime`.
  */
 export { jsx, jsxs, jsxDEV, Fragment, createElement } from './index';
+export type { JSX } from './index';

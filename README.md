@@ -119,46 +119,57 @@ export default function RootLayout({ children }: { children: any }) {
 
 Nested layouts work automatically — just add `layout.tsx` in any subdirectory.
 
-### Client Mount Scripts (`page.client.tsx`)
+### Client Architecture (`page.client.tsx`)
 
-Mount scripts add interactivity to server-rendered HTML. They export a default `mount()` function that Melina auto-invokes when the page loads. JSX in mount scripts compiles to **VNodes** which can be mounted using `render`.
+Melina uses a **pure VDOM architecture** for client interactivity. There are no hooks, no signals, and no magic. You simply call `render(vnode, container)` to update the UI. This design encourages using robust external state management libraries like **XState**.
 
 ```tsx
 // app/page.client.tsx
 import { render } from 'melina/client';
+import { createMachine, createActor } from 'xstate';
 
-export default function mount(): () => void {
-  const feedPosts = document.getElementById('feed-posts');
-  if (!feedPosts) return () => {};
-
-  // Add click handlers to server-rendered elements
-  function handleClick(e: Event) {
-    const card = (e.target as Element).closest('.post-card') as HTMLElement;
-    if (!card) return;
-    window.location.href = `/post/${card.dataset.postId}`;
+// 1. Define State Machine
+const toggleMachine = createMachine({
+  initial: 'inactive',
+  states: {
+    inactive: { on: { TOGGLE: 'active' } },
+    active: { on: { TOGGLE: 'inactive' } }
   }
+});
 
-  feedPosts.addEventListener('click', handleClick);
+// 2. Define View (Pure Function)
+function ToggleButton({ state, send }) {
+  return (
+    <button onClick={() => send({ type: 'TOGGLE' })}>
+      State: {state.value}
+    </button>
+  );
+}
 
-  // JSX creates VNodes — mount them using render()
-  const loadMore = document.getElementById('load-more');
-  if (loadMore) {
-    // Renders the button into the load-more container
-    render(<button className="load-btn">Load More</button>, loadMore);
-  }
+// 3. Mount Logic
+export default function mount() {
+  const root = document.getElementById('root');
+  if (!root) return;
 
-  // Return cleanup function (called on navigation away)
-  return () => {
-    feedPosts.removeEventListener('click', handleClick);
-  };
+  const actor = createActor(toggleMachine);
+
+  // Subscribe to state changes -> Re-render
+  actor.subscribe((snapshot) => {
+    render(
+      <ToggleButton state={snapshot} send={actor.send} />, 
+      root
+    );
+  });
+
+  actor.start();
+  return () => actor.stop();
 }
 ```
 
 **Key concepts:**
-- `page.client.tsx` — Runs per-page. Mounts when page loads, cleans up on navigation.
-- `layout.client.tsx` — Runs once. Persists across page navigations (great for floating widgets, global UI).
-- JSX compiles to VNodes via `melina/client`.
-- The `mount()` return value is a cleanup function for event listeners, timers, etc.
+- **Zero Hooks**: Logic is decoupled from the view.
+- **Explicit Rendering**: You control when and where to render.
+- **Islands Architecture**: Mount small interactive apps into specific containers within server-rendered HTML.
 
 ### API Routes (`route.ts`)
 
@@ -255,8 +266,7 @@ npx melina start                # Start dev server in current directory
 
 | Example | Description |
 |---------|-------------|
-| [`shopping-cart`](./examples/shopping-cart) | E-commerce with cart state managed via XState in mount scripts |
-| [`social-feed`](./examples/social-feed) | Social feed with messenger widget, infinite scroll, SSE messaging |
+| [`agent-interface`](./examples/agent-interface) | **Unified Pattern**: Complex dashboard with XState + Melina VDOM (No hooks). |
 
 ## License
 

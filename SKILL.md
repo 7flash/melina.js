@@ -113,38 +113,50 @@ export default function RootLayout({ children }: { children: any }) {
 }
 ```
 
-### Client Mount Script (`page.client.tsx`)
+### Client Architecture (`page.client.tsx`)
 
-Mount scripts add interactivity to server-rendered HTML. They export a default `mount()` function. Melina auto-invokes it when the page loads.
-
-**JSX in mount scripts compiles to VNodes** which are rendered using `render`.
+Melina uses a **pure VDOM architecture** for client interactivity. There are no hooks, no signals, and no magic. Logic is decoupled from the view. You typically use **XState** to manage state and drive UI updates via `render`.
 
 ```tsx
 // app/page.client.tsx
 import { render } from 'melina/client';
+import { createMachine, createActor } from 'xstate';
 
-export default function mount(): () => void {
-  const root = document.getElementById('interactive-root');
-  if (!root) return () => {};
-
-  // Add event listeners to server-rendered elements
-  function handleClick(e: Event) {
-    console.log('Clicked!', e.target);
+// 1. Define State Machine
+const machine = createMachine({
+  initial: 'idle',
+  states: {
+    idle: { on: { CLICK: 'active' } },
+    active: { on: { RESET: 'idle' } }
   }
-  root.addEventListener('click', handleClick);
+});
 
-  // JSX creates VNodes — render them to the DOM
-  const widget = (
+// 2. Define Pure View Component
+function Widget({ state, send }) {
+  return (
     <div className="widget">
-      <button onClick={() => alert('Hello!')}>Click me</button>
+      <button onClick={() => send({ type: 'CLICK' })}>
+        State: {state.value} 
+      </button>
+      {state.matches('active') && <button onClick={() => send({ type: 'RESET' })}>Reset</button>}
     </div>
   );
-  render(widget, root);
+}
 
-  // Return cleanup function (called on page navigation)
-  return () => {
-    root.removeEventListener('click', handleClick);
-  };
+// 3. Mount Logic
+export default function mount() {
+  const root = document.getElementById('interactive-root');
+  if (!root) return;
+
+  const actor = createActor(machine);
+  
+  // Subscribe -> Render
+  actor.subscribe((snapshot) => {
+    render(<Widget state={snapshot} send={actor.send} />, root);
+  });
+
+  actor.start();
+  return () => actor.stop(); // Cleanup
 }
 ```
 
