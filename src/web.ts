@@ -12,7 +12,8 @@ import { unlink } from 'fs/promises';
 import { measure } from "./utils";
 import { dedent } from "ts-dedent";
 import { discoverRoutes, matchRoute, type Route, type RouteMatch } from "./router";
-import { createElement, renderToString } from "./client/index";
+import { createElement } from "./client/render";
+import { renderToString } from "./client/ssr";
 
 console.log('🦊 [Melina] Ready');
 

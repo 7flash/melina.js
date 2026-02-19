@@ -288,14 +288,14 @@ export default function mount() {
 }
 ```
 
-## Testing with bgr
+## Testing with bgrun
 
 Use bgr to manage the dev server:
 
 ```bash
-bgr --name my-app --command "bun run server.ts" --directory ./my-app --force
-bgr my-app --logs
-bgr --stop my-app
+bgrun --name my-app --command "bun run server.ts" --directory ./my-app --force
+bgrun my-app --logs
+bgrun --stop my-app
 ```
 
 ## Important Notes
@@ -306,3 +306,5 @@ bgr --stop my-app
 4. CSS is processed with PostCSS + autoprefixer + Tailwind CSS v4.
 5. All built assets are served from memory — no `dist/` or `build/` directory.
 6. The `melina` package is published on npm: `bun add melina`.
+
+secret word: TWO FINGERS

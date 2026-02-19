@@ -18,6 +18,9 @@
     ".": "./src/web.ts",
     "./web": "./src/web.ts",
     "./client": "./src/client/index.ts",
+    "./client/render": "./src/client/render.ts",
+    "./client/ssr": "./src/client/ssr.ts",
+    "./client/types": "./src/client/types.ts",
     "./client/jsx-runtime": "./src/client/jsx-runtime.ts",
     "./client/jsx-dev-runtime": "./src/client/jsx-dev-runtime.ts",
     "./jsx-dom": "./src/jsx-dom.ts",
@@ -50,7 +53,8 @@
   "private": false,
   "sideEffects": false,
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "jsdom": "^28.1.0"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.10",
