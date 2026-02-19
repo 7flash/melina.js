@@ -3,15 +3,15 @@
  * 
  * This barrel re-exports from separated modules:
  * 
- *   types.ts  — VNode, Props, Child, Component, Fragment, JSX namespace
- *   render.ts — Client-side VDOM renderer with diffing (browser-only)
- *   ssr.ts    — Server-side renderToString (server-only, no DOM)
+ *   types.ts       — VNode, Props, Child, Component, Fragment, JSX namespace
+ *   render.ts      — Client-side VDOM renderer with pluggable reconciler (browser-only)
+ *   reconcilers/   — Replaceable diffing strategies (keyed, sequential, custom)
  * 
- * Server code (src/web.ts) imports { createElement, renderToString } from here.
- * Client code (page.client.tsx) imports { render } from here.
+ * SSR (renderToString) lives at src/ssr.ts — NOT here. The client directory
+ * is bundled for the browser, and SSR code must never appear in client bundles.
  * 
- * Bun.build tree-shakes unused exports, so client bundles will never include
- * renderToString, and server bundles will never include the DOM reconciler.
+ * Server code (src/web.ts) imports renderToString from 'melina/ssr' or '../ssr'.
+ * Client code (page.client.tsx) imports { render } from 'melina/client'.
  */
 
 // Types + Fragment symbol
@@ -23,10 +23,12 @@ export { createElement, jsx, jsxs, jsxDEV } from './render';
 export { createElement as h } from './render';
 
 // Client-side renderer
-export { render, navigate, Link } from './render';
+export { render, navigate, Link, setReconciler, getReconciler } from './render';
 export type { Fiber, LinkProps } from './render';
 
-// Server-side renderer
-export { renderToString } from './ssr';
+// Reconciler strategies (for advanced usage)
+export { sequentialReconciler } from './reconcilers/sequential';
+export { keyedReconciler } from './reconcilers/keyed';
+export type { Reconciler, ReconcilerContext, ReconcilerName } from './reconcilers/types';
 
 export default {};

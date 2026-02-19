@@ -1,6 +1,6 @@
 {
   "name": "melina",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "A lightweight web framework for Bun with Next.js-style routing and zero-config builds.",
   "module": "./src/web.ts",
   "main": "./src/web.ts",
@@ -17,15 +17,19 @@
   "exports": {
     ".": "./src/web.ts",
     "./web": "./src/web.ts",
+    "./server": "./src/server/index.ts",
+    "./server/build": "./src/server/build.ts",
+    "./server/serve": "./src/server/serve.ts",
+    "./server/imports": "./src/server/imports.ts",
+    "./server/router": "./src/server/router.ts",
+    "./server/ssr": "./src/server/ssr.ts",
     "./client": "./src/client/index.ts",
     "./client/render": "./src/client/render.ts",
-    "./client/ssr": "./src/client/ssr.ts",
     "./client/types": "./src/client/types.ts",
+    "./client/reconcilers": "./src/client/reconcilers/index.ts",
     "./client/jsx-runtime": "./src/client/jsx-runtime.ts",
     "./client/jsx-dev-runtime": "./src/client/jsx-dev-runtime.ts",
-    "./jsx-dom": "./src/jsx-dom.ts",
-    "./Link": "./src/Link.tsx",
-    "./utils": "./src/utils.ts"
+    "./client/jsx-dom": "./src/client/jsx-dom.ts"
   },
   "repository": {
     "type": "git",
@@ -59,6 +63,7 @@
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.10",
     "autoprefixer": "^10.4.21",
+    "measure-fn": "^2.0.0",
     "postcss": "^8.5.6",
     "ts-dedent": "^2.2.0"
   }

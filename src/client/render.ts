@@ -1,38 +1,25 @@
 /**
  * melina/client — Client-Side Renderer
  * 
- * Real VDOM diffing with three reconciliation strategies:
+ * Pluggable VDOM reconciler with replaceable diffing strategies:
  * 
- * 1. KEYED DIFF — O(n) via key→fiber map. Handles insertions, deletions,
- *    and reorders without touching nodes that didn't move. Uses the Longest
- *    Increasing Subsequence (LIS) algorithm to minimize DOM moves.
- *    
- * 2. SEQUENTIAL DIFF — For non-keyed children. Patches nodes in-place by
- *    index, appending/removing only the tail difference.
- *    
- * 3. PROPERTY PATCH — Updates attributes on existing DOM elements without
- *    recreating them. Only touches changed props, reducing layout thrash.
+ * 1. KEYED DIFF — O(n log n) via key→fiber map + LIS for list mutations.
+ * 2. SEQUENTIAL DIFF — O(n) index-based for static/non-keyed children.
+ * 3. PROPERTY PATCH — In-place attribute updates, preserves event listeners.
  * 
- * Why these strategies?
- * ─────────────────────
- * - Keyed diff is the gold standard for list rendering (React, Preact, Inferno
- *   all use it). We use LIS to find the longest stable subsequence, then only 
- *   move nodes that fall outside it. This is O(n log n) for the LIS + O(n) 
- *   for the diff = O(n log n) total, matching Inferno's approach.
+ * The reconciler is configurable via `setReconciler()`. By default, `auto`
+ * mode inspects children for keys and selects the best strategy per diff.
  * 
- * - Sequential diff is faster than keyed for static/non-reorderable children
- *   (e.g. a form with fixed fields). No map allocation, no LIS computation.
- *   Pure O(n) linear scan.
- * 
- * - Property patching avoids element recreation entirely. If a <div> stays a
- *   <div> but its className changes, we just update the attribute. This is 
- *   the single biggest win over innerHTML replacement — event listeners and
- *   input focus are preserved.
+ * Strategies are defined in `src/client/reconcilers/` and implement the
+ * Reconciler interface. See reconcilers/types.ts for the contract.
  * 
  * Zero dependencies. ~2KB gzipped.
  */
 
 import { Fragment, type VNode, type Child, type Component, type Props } from './types';
+import type { Reconciler, ReconcilerContext, ReconcilerName } from './reconcilers/types';
+import { sequentialReconciler } from './reconcilers/sequential';
+import { keyedReconciler } from './reconcilers/keyed';
 
 // ─── Fiber: Internal representation of a mounted VNode ─────────────────────────
 
@@ -102,7 +89,37 @@ function collectNodes(fiber: Fiber): Node[] {
     return nodes;
 }
 
-// ─── Core Diff Algorithm ───────────────────────────────────────────────────────
+// ─── Pluggable Reconciler ──────────────────────────────────────────────────────
+
+/** The active reconciler. Defaults to 'auto' which selects keyed vs sequential per diff. */
+let activeReconciler: ReconcilerName | Reconciler = 'auto';
+
+/**
+ * Set the reconciliation strategy.
+ * 
+ * @param strategy - 'auto' (default), 'keyed', 'sequential', or a custom Reconciler function
+ * 
+ * Examples:
+ *   setReconciler('keyed');           // Force keyed for all diffs
+ *   setReconciler('sequential');      // Force sequential for all diffs
+ *   setReconciler(myCustomReconciler); // Plug in your own
+ */
+export function setReconciler(strategy: ReconcilerName | Reconciler): void {
+    activeReconciler = strategy;
+}
+
+/** Get the current active reconciler name/function for inspection. */
+export function getReconciler(): ReconcilerName | Reconciler {
+    return activeReconciler;
+}
+
+/** Shared context passed to reconciler strategies. */
+const reconcilerCtx: ReconcilerContext = {
+    mountVNode,
+    patchFiber,
+    removeFiber,
+    collectNodes,
+};
 
 function diffChildren(
     parentFiber: Fiber,
@@ -112,172 +129,31 @@ function diffChildren(
 ): void {
     const flatNew = flattenChildren(newVNodes);
 
+    // Custom reconciler function — delegate entirely
+    if (typeof activeReconciler === 'function') {
+        activeReconciler(parentFiber, parentNode, oldFibers, flatNew, reconcilerCtx);
+        return;
+    }
+
+    // Named strategy selection
+    if (activeReconciler === 'keyed') {
+        keyedReconciler(parentFiber, parentNode, oldFibers, flatNew, reconcilerCtx);
+        return;
+    }
+    if (activeReconciler === 'sequential') {
+        sequentialReconciler(parentFiber, parentNode, oldFibers, flatNew, reconcilerCtx);
+        return;
+    }
+
+    // 'auto' — inspect children for keys
     const hasKeys = flatNew.some(v => v && typeof v === 'object' && 'key' in v && v.key != null)
         || oldFibers.some(f => f.key != null);
 
     if (hasKeys) {
-        keyedDiff(parentFiber, parentNode, oldFibers, flatNew);
+        keyedReconciler(parentFiber, parentNode, oldFibers, flatNew, reconcilerCtx);
     } else {
-        sequentialDiff(parentFiber, parentNode, oldFibers, flatNew);
+        sequentialReconciler(parentFiber, parentNode, oldFibers, flatNew, reconcilerCtx);
     }
-}
-
-// ─── Strategy 1: Sequential Diff ───────────────────────────────────────────────
-
-function sequentialDiff(
-    parentFiber: Fiber,
-    parentNode: Node,
-    oldFibers: Fiber[],
-    newVNodes: (VNode | Child)[],
-): void {
-    const newFibers: Fiber[] = [];
-
-    // Snapshot old fibers — don't mutate during iteration
-    const oldSnapshot = [...oldFibers];
-    const maxLen = Math.max(oldSnapshot.length, newVNodes.length);
-
-    for (let i = 0; i < maxLen; i++) {
-        const oldFib = oldSnapshot[i];
-        const newVNode = i < newVNodes.length ? newVNodes[i] : undefined;
-
-        if (newVNode === undefined || newVNode === null || newVNode === false || newVNode === true) {
-            // Remove old node
-            if (oldFib) removeFiber(oldFib, parentNode);
-            continue;
-        }
-
-        if (!oldFib) {
-            // Append new node
-            const fiber = mountVNode(newVNode, parentFiber, parentNode);
-            if (fiber) newFibers.push(fiber);
-            continue;
-        }
-
-        // Patch existing
-        const patched = patchFiber(oldFib, newVNode, parentFiber, parentNode);
-        if (patched) newFibers.push(patched);
-    }
-
-    parentFiber.children = newFibers;
-}
-
-// ─── Strategy 2: Keyed Diff ────────────────────────────────────────────────────
-
-function keyedDiff(
-    parentFiber: Fiber,
-    parentNode: Node,
-    oldFibers: Fiber[],
-    newVNodes: (VNode | Child)[],
-): void {
-    // Build key → fiber map
-    const oldKeyMap = new Map<string | number, Fiber>();
-    const oldIndexMap = new Map<Fiber, number>();
-    for (let i = 0; i < oldFibers.length; i++) {
-        const f = oldFibers[i];
-        if (f.key != null) oldKeyMap.set(f.key, f);
-        oldIndexMap.set(f, i);
-    }
-
-    const newFibers: Fiber[] = [];
-    const usedOldFibers = new Set<Fiber>();
-    const sources: number[] = [];
-
-    // First pass: match by key, patch reusable fibers
-    for (let i = 0; i < newVNodes.length; i++) {
-        const v = newVNodes[i];
-        const key = (v && typeof v === 'object' && 'key' in v) ? v.key : null;
-
-        let oldFib: Fiber | undefined;
-        if (key != null) oldFib = oldKeyMap.get(key);
-
-        if (oldFib && !usedOldFibers.has(oldFib)) {
-            usedOldFibers.add(oldFib);
-            const patched = patchFiber(oldFib, v!, parentFiber, parentNode);
-            newFibers.push(patched!);
-            sources.push(oldIndexMap.get(oldFib)!);
-        } else {
-            // Mount new — but don't append to DOM yet, we'll position in second pass
-            const fiber = mountVNode(v!, parentFiber);
-            if (fiber) {
-                newFibers.push(fiber);
-                sources.push(-1);
-            }
-        }
-    }
-
-    // Remove old fibers not reused
-    for (const oldFib of oldFibers) {
-        if (!usedOldFibers.has(oldFib)) {
-            removeFiber(oldFib, parentNode);
-        }
-    }
-
-    // Compute LIS to minimize moves
-    const oldIndicesOnly = sources.filter(s => s !== -1);
-    const lisIndices = longestIncreasingSubsequence(oldIndicesOnly);
-    const lisValues = new Set(lisIndices.map(i => oldIndicesOnly[i]));
-
-    // Second pass: position all nodes correctly (right to left)
-    let anchor: Node | null = null;
-    for (let i = newFibers.length - 1; i >= 0; i--) {
-        const fiber = newFibers[i];
-        const nodes = collectNodes(fiber);
-        if (nodes.length === 0) continue;
-
-        const needsMove = sources[i] === -1 || !lisValues.has(sources[i]);
-
-        if (needsMove) {
-            for (const node of nodes) {
-                if (anchor) {
-                    parentNode.insertBefore(node, anchor);
-                } else {
-                    parentNode.appendChild(node);
-                }
-            }
-        }
-        anchor = nodes[0];
-    }
-
-    parentFiber.children = newFibers;
-}
-
-/**
- * Longest Increasing Subsequence — O(n log n)
- * 
- * Returns indices of elements forming the LIS. Nodes at these positions
- * are already in correct relative order and don't need DOM moves.
- * 
- * Algorithm: Patience sorting + backtracking.
- */
-function longestIncreasingSubsequence(arr: number[]): number[] {
-    if (arr.length === 0) return [];
-
-    const n = arr.length;
-    const tails: number[] = [];
-    const indices: number[] = [];
-    const predecessors: number[] = new Array(n).fill(-1);
-
-    for (let i = 0; i < n; i++) {
-        let lo = 0, hi = tails.length;
-        while (lo < hi) {
-            const mid = (lo + hi) >> 1;
-            if (tails[mid] < arr[i]) lo = mid + 1;
-            else hi = mid;
-        }
-
-        tails[lo] = arr[i];
-        indices[lo] = i;
-        if (lo > 0) predecessors[i] = indices[lo - 1];
-    }
-
-    const result: number[] = [];
-    let k = indices[tails.length - 1];
-    for (let i = tails.length - 1; i >= 0; i--) {
-        result[i] = k;
-        k = predecessors[k];
-    }
-
-    return result;
 }
 
 // ─── Strategy 3: Property Patching ─────────────────────────────────────────────

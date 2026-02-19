@@ -1,4 +1,4 @@
-import { render } from 'melina/client';
+import { render, navigate } from 'melina/client';
 import { createMachine, createActor } from 'xstate';
 import { Icons } from './components';
 
@@ -49,16 +49,54 @@ function Widget({ state, send }: { state: any, send: any }) {
     );
 }
 
+/** Highlight the active nav link based on current path */
+function updateActiveNav() {
+    const path = window.location.pathname;
+    document.querySelectorAll('.nav-link').forEach((el) => {
+        const link = el as HTMLAnchorElement;
+        const href = link.getAttribute('href') || '';
+        const isActive = (href === '/' && path === '/') || (href !== '/' && path.startsWith(href));
+
+        if (isActive) {
+            link.classList.add('bg-white/10', 'text-white');
+            link.classList.remove('text-muted');
+        } else {
+            link.classList.remove('bg-white/10', 'text-white');
+            link.classList.add('text-muted');
+        }
+    });
+}
+
 export default function mount() {
+    // Widget
     const root = document.getElementById('global-widget');
-    if (!root) return;
+    if (root) {
+        const actor = createActor(widgetMachine);
+        actor.subscribe((snapshot: any) => {
+            render(<Widget state={snapshot} send={actor.send} />, root);
+        });
+        actor.start();
+    }
 
-    const actor = createActor(widgetMachine);
-
-    actor.subscribe((snapshot: any) => {
-        render(<Widget state={snapshot} send={actor.send} />, root);
+    // Global SPA navigation via data-link
+    document.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        const link = target.closest('a[data-link]') as HTMLAnchorElement;
+        if (link) {
+            if ((e as MouseEvent).metaKey || (e as MouseEvent).ctrlKey || (e as MouseEvent).shiftKey || (e as MouseEvent).button !== 0) return;
+            e.preventDefault();
+            const href = link.getAttribute('href');
+            if (href) {
+                navigate(href).then(() => updateActiveNav());
+            }
+        }
     });
 
-    actor.start();
-    return () => actor.stop();
+    // Highlight active nav on load
+    updateActiveNav();
+
+    // Update on popstate (back/forward)
+    window.addEventListener('popstate', () => {
+        setTimeout(updateActiveNav, 50);
+    });
 }

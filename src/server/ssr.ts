@@ -1,15 +1,18 @@
 /**
- * melina/client — Server-Side Rendering
+ * melina — Server-Side Rendering
  * 
  * String-based HTML renderer for VNodes. This module has ZERO DOM dependencies
  * and runs exclusively on the server. It is never bundled into client scripts.
  * 
- * The client renderer (render.ts) and this SSR renderer (ssr.ts) share types
+ * Lives at src/server/ssr.ts (NOT inside src/client/) because src/client/ is bundled
+ * and served to the browser. SSR code must never appear in client bundles.
+ * 
+ * The client renderer (client/render.ts) and this SSR renderer share types
  * but have completely separate implementations. SSR produces strings via 
  * concatenation; the client produces real DOM nodes via the diffing reconciler.
  */
 
-import { Fragment, type VNode, type Child, type Component } from './types';
+import { Fragment, type VNode, type Child, type Component } from '../client/types';
 
 // ─── HTML Escaping ─────────────────────────────────────────────────────────────
 
