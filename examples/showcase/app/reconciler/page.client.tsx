@@ -1,20 +1,11 @@
-import { render, setReconciler, getReconciler } from 'melina/client';
+import { render } from 'melina/client';
 import type { ReconcilerName } from 'melina/client';
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
 type Item = { id: number; label: string; color: string };
-
-type StrategyResult = {
-    strategy: string;
-    avgMs: number;
-};
-
-type ScenarioResult = {
-    name: string;
-    strategies: StrategyResult[];
-    winner: string;
-};
+type StrategyResult = { strategy: string; avgMs: number };
+type ScenarioResult = { name: string; strategies: StrategyResult[]; winner: string };
 
 // ─── Data Helpers ───────────────────────────────────────────────────────────────
 
@@ -45,15 +36,10 @@ function ItemList({ items }: { items: Item[] }) {
     return (
         <div className="item-list">
             {items.map(item => (
-                <div key={item.id} style={{
-                    display: 'flex',
-                    gap: '8px',
-                    padding: '4px 8px',
-                    borderBottom: '1px solid rgba(255,255,255,0.03)',
-                    fontSize: '0.8rem',
-                }}>
-                    <span style={{ color: item.color, minWidth: '40px', fontFamily: 'var(--font-mono)' }}>#{item.id}</span>
-                    <span>{item.label}</span>
+                <div className="list-item" key={item.id}>
+                    <span className="list-item-key">#{item.id}</span>
+                    <span className="list-item-label">{item.label}</span>
+                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: item.color, flexShrink: 0 }}></span>
                 </div>
             ))}
         </div>
@@ -61,10 +47,7 @@ function ItemList({ items }: { items: Item[] }) {
 }
 
 function PlaygroundStats({ strategy, itemCount, lastOp, renderTime }: {
-    strategy: string;
-    itemCount: number;
-    lastOp: string;
-    renderTime: number;
+    strategy: string; itemCount: number; lastOp: string; renderTime: number;
 }) {
     const timeColor = renderTime < 2 ? 'var(--color-success)' : renderTime < 10 ? 'var(--color-warning)' : 'var(--color-danger)';
     return (
@@ -81,16 +64,13 @@ function BenchmarkResults({ scenarios }: { scenarios: ScenarioResult[] }) {
     if (scenarios.length === 0) {
         return <span style={{ color: 'var(--color-muted)' }}>Click a scenario or "Run All" to start.</span>;
     }
-
     return (
         <div>
             {scenarios.map((scenario, si) => {
                 const maxTime = Math.max(...scenario.strategies.map(s => s.avgMs), 0.1);
-
                 return (
                     <div key={si} style={{
-                        marginBottom: '16px',
-                        paddingBottom: '16px',
+                        marginBottom: '16px', paddingBottom: '16px',
                         borderBottom: si < scenarios.length - 1 ? '1px solid var(--color-border)' : 'none',
                     }}>
                         <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '8px' }}>{scenario.name}</div>
@@ -99,7 +79,10 @@ function BenchmarkResults({ scenarios }: { scenarios: ScenarioResult[] }) {
                             const barWidth = Math.max(2, (s.avgMs / maxTime) * 100);
                             return (
                                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', fontSize: '0.75rem' }}>
-                                    <span style={{ minWidth: '80px', fontFamily: 'var(--font-mono)', color: isWinner ? 'var(--color-success)' : 'var(--color-text)' }}>
+                                    <span style={{
+                                        minWidth: '80px', fontFamily: 'var(--font-mono)',
+                                        color: isWinner ? 'var(--color-success)' : 'var(--color-foreground)',
+                                    }}>
                                         {isWinner ? '🏆 ' : '   '}{s.strategy}
                                     </span>
                                     <div className="perf-bar" style={{ flex: 1 }}>
@@ -145,28 +128,24 @@ function runBenchmark(scenarioKey: string, workspace: HTMLElement): ScenarioResu
     for (const strategy of STRATEGIES) {
         const times: number[] = [];
         for (let run = 0; run < RUNS; run++) {
-            // Fresh initial render for each run — use per-render override
             nextId = 0;
             const baseItems = createItems(LIST_SIZE);
             render(<ItemList items={baseItems} />, workspace, { reconciler: strategy });
 
-            // Apply mutation and measure re-render with same strategy
             const mutated = scenario.mutation(baseItems);
             const start = performance.now();
             render(<ItemList items={mutated} />, workspace, { reconciler: strategy });
             times.push(performance.now() - start);
         }
 
-        // Cleanup workspace
-        render(null as any, workspace, { reconciler: 'replace' });
+        // Clear workspace between strategies
+        workspace.innerHTML = '';
 
         const avgMs = times.reduce((a, b) => a + b, 0) / times.length;
         results.push({ strategy, avgMs });
     }
 
-    // Find winner (lowest avg)
     const winner = results.reduce((best, cur) => cur.avgMs < best.avgMs ? cur : best).strategy;
-
     return { name: scenario.label, strategies: results, winner };
 }
 
@@ -178,7 +157,10 @@ export default function mount() {
     const playgroundList = document.getElementById('playground-list');
     const playgroundStats = document.getElementById('playground-stats');
 
-    if (!benchResults || !benchWorkspace || !playgroundList || !playgroundStats) return;
+    if (!benchResults || !benchWorkspace || !playgroundList || !playgroundStats) {
+        console.error('[Reconciler] Missing DOM containers');
+        return;
+    }
 
     let allResults: ScenarioResult[] = [];
 
@@ -189,31 +171,29 @@ export default function mount() {
 
             if (scenario === 'all') {
                 allResults = [];
-                render(<span style={{ color: 'var(--color-accent)' }}>⏳ Running all scenarios...</span>, benchResults!);
+                render(<span style={{ color: 'var(--color-accent)' }}>⏳ Running all scenarios...</span>, benchResults);
 
                 const keys = Object.keys(SCENARIOS);
                 let i = 0;
 
                 function runNext() {
                     if (i >= keys.length) {
-                        render(<BenchmarkResults scenarios={allResults} />, benchResults!);
+                        render(<BenchmarkResults scenarios={allResults} />, benchResults);
                         return;
                     }
-                    const result = runBenchmark(keys[i], benchWorkspace!);
+                    const result = runBenchmark(keys[i], benchWorkspace);
                     allResults.push(result);
-                    render(<BenchmarkResults scenarios={allResults} />, benchResults!);
+                    render(<BenchmarkResults scenarios={allResults} />, benchResults);
                     i++;
-                    setTimeout(runNext, 16); // Let the UI breathe
+                    setTimeout(runNext, 16);
                 }
                 runNext();
             } else {
-                const result = runBenchmark(scenario, benchWorkspace!);
-                // Replace existing result for same scenario or add
+                const result = runBenchmark(scenario, benchWorkspace);
                 const idx = allResults.findIndex(r => r.name === result.name);
                 if (idx >= 0) allResults[idx] = result;
                 else allResults.push(result);
-
-                render(<BenchmarkResults scenarios={allResults} />, benchResults!);
+                render(<BenchmarkResults scenarios={allResults} />, benchResults);
             }
         });
     });
@@ -227,14 +207,17 @@ export default function mount() {
 
     function renderPlayground() {
         const start = performance.now();
-        render(<ItemList items={items} />, playgroundList!, { reconciler: currentStrategy });
+        render(<ItemList items={items} />, playgroundList, { reconciler: currentStrategy });
         lastRenderTime = performance.now() - start;
-        render(<PlaygroundStats strategy={currentStrategy} itemCount={items.length} lastOp={lastOp} renderTime={lastRenderTime} />, playgroundStats!);
+        render(
+            <PlaygroundStats strategy={currentStrategy} itemCount={items.length} lastOp={lastOp} renderTime={lastRenderTime} />,
+            playgroundStats
+        );
     }
 
     renderPlayground();
 
-    // Strategy selection
+    // Strategy selector (event delegation)
     document.getElementById('strategy-selector')?.addEventListener('click', (e) => {
         const btn = (e.target as HTMLElement).closest('[data-strategy]');
         if (!btn) return;
@@ -265,8 +248,8 @@ export default function mount() {
     });
 
     return () => {
-        render(null as any, playgroundList!, { reconciler: 'replace' });
-        render(null as any, playgroundStats!, { reconciler: 'replace' });
-        render(null as any, benchResults!, { reconciler: 'replace' });
+        playgroundList.innerHTML = '';
+        playgroundStats.innerHTML = '';
+        benchResults.innerHTML = '';
     };
 }
