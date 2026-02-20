@@ -7,7 +7,7 @@
 
 import { build as bunBuild, type BuildConfig, type BunFile } from "bun";
 import path from "path";
-import { existsSync, readFileSync, statSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import autoprefixer from "autoprefixer";
 import postcss from "postcss";
 import tailwind from "@tailwindcss/postcss";
@@ -22,17 +22,19 @@ export const builtAssets: Record<string, { content: ArrayBuffer; contentType: st
 // Build deduplication — prevent concurrent builds of the same file
 const buildInFlight = new Map<string, Promise<string>>();
 
-// Dev-mode mtime cache — only rebuild when files actually change
-const devMtime: Record<string, number> = {};
+// Global build serializer — prevents concurrent Bun builds + PostCSS from
+// overwhelming the process on rapid navigation (Windows is especially fragile).
+let buildQueue: Promise<any> = Promise.resolve();
 
-function hasFileChanged(filePath: string): boolean {
+async function serializedBuild<T>(fn: () => Promise<T>): Promise<T> {
+    const prev = buildQueue;
+    let resolve: () => void;
+    buildQueue = new Promise<void>(r => resolve = r);
+    await prev;
     try {
-        const mtime = statSync(filePath).mtimeMs;
-        if (devMtime[filePath] === mtime) return false;
-        devMtime[filePath] = mtime;
-        return true;
-    } catch {
-        return true;
+        return await fn();
+    } finally {
+        resolve!();
     }
 }
 
@@ -118,7 +120,7 @@ export async function buildClientScript(clientPath: string): Promise<string> {
 }
 
 async function _buildClientScriptImpl(clientPath: string): Promise<string> {
-    if (buildCache[clientPath] && (isDev ? !hasFileChanged(clientPath) : true)) {
+    if (!isDev && buildCache[clientPath]) {
         return buildCache[clientPath].outputPath;
     }
 
@@ -145,7 +147,7 @@ async function _buildClientScriptImpl(clientPath: string): Promise<string> {
         });
     }
 
-    const result = await bunBuild({
+    const result = await serializedBuild(() => bunBuild({
         entrypoints: [clientPath],
         outdir: undefined,
         target: 'browser',
@@ -161,7 +163,7 @@ async function _buildClientScriptImpl(clientPath: string): Promise<string> {
             chunk: '[name]-[hash].[ext]',
             asset: '[name]-[hash].[ext]',
         },
-    });
+    }));
 
     const mainOutput = result.outputs.find(o => o.kind === 'entry-point');
     if (!mainOutput) {
@@ -245,7 +247,7 @@ async function _buildScriptImpl(absolutePath: string, filePath: string, allExter
 
     let result;
     try {
-        result = await bunBuild(buildConfig);
+        result = await serializedBuild(() => bunBuild(buildConfig));
     } catch (error) {
         console.error(`bunBuild failed, trying fallback: ${error}`);
         try {
@@ -291,7 +293,7 @@ export async function buildStyle(filePath: string): Promise<string> {
         throw new Error(`Style not found: ${filePath}`);
     }
 
-    if (buildCache[filePath] && (isDev ? !hasFileChanged(absolutePath) : true)) {
+    if (!isDev && buildCache[filePath]) {
         return buildCache[filePath].outputPath;
     }
 
@@ -313,11 +315,13 @@ async function _buildStyleImpl(absolutePath: string, filePath: string): Promise<
     const baseName = path.basename(absolutePath, ext);
 
     const cssContent = await Bun.file(absolutePath).text();
-    const result = await postcss([autoprefixer, tailwind]).process(cssContent, {
-        from: absolutePath,
-        to: 'style.css',
-        map: isDev ? { inline: false } : false,
-    });
+    const result = await serializedBuild(() =>
+        postcss([autoprefixer, tailwind]).process(cssContent, {
+            from: absolutePath,
+            to: 'style.css',
+            map: isDev ? { inline: false } : false,
+        })
+    );
 
     if (!result.css) {
         throw new Error(`PostCSS processing returned empty CSS for ${absolutePath}`);
