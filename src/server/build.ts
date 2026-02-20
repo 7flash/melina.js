@@ -7,7 +7,7 @@
 
 import { build as bunBuild, type BuildConfig, type BunFile } from "bun";
 import path from "path";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, statSync } from "fs";
 import autoprefixer from "autoprefixer";
 import postcss from "postcss";
 import tailwind from "@tailwindcss/postcss";
@@ -21,6 +21,20 @@ export const builtAssets: Record<string, { content: ArrayBuffer; contentType: st
 
 // Build deduplication — prevent concurrent builds of the same file
 const buildInFlight = new Map<string, Promise<string>>();
+
+// Dev-mode mtime cache — only rebuild when files actually change
+const devMtime: Record<string, number> = {};
+
+function hasFileChanged(filePath: string): boolean {
+    try {
+        const mtime = statSync(filePath).mtimeMs;
+        if (devMtime[filePath] === mtime) return false;
+        devMtime[filePath] = mtime;
+        return true;
+    } catch {
+        return true;
+    }
+}
 
 // Track which client scripts need React import maps
 export const clientScriptsUsingReact = new Set<string>();
@@ -104,7 +118,7 @@ export async function buildClientScript(clientPath: string): Promise<string> {
 }
 
 async function _buildClientScriptImpl(clientPath: string): Promise<string> {
-    if (!isDev && buildCache[clientPath]) {
+    if (buildCache[clientPath] && (isDev ? !hasFileChanged(clientPath) : true)) {
         return buildCache[clientPath].outputPath;
     }
 
@@ -277,7 +291,7 @@ export async function buildStyle(filePath: string): Promise<string> {
         throw new Error(`Style not found: ${filePath}`);
     }
 
-    if (!isDev && buildCache[filePath]) {
+    if (buildCache[filePath] && (isDev ? !hasFileChanged(absolutePath) : true)) {
         return buildCache[filePath].outputPath;
     }
 
