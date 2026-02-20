@@ -7,90 +7,92 @@ export default function ReconcilerPage() {
                     <span className="badge badge-client">Client Mount</span>
                 </div>
                 <p className="page-description">
-                    Melina's <code className="code-inline">render()</code> supports three reconciler strategies,
-                    each optimized for a different DOM mutation pattern. Run each benchmark
-                    to see which strategy dominates — winners are consistent, not random.
+                    Melina ships three reconciler strategies. Each dominates a specific
+                    DOM mutation pattern — run the benchmarks to see consistent winners.
                 </p>
             </div>
 
-            {/* ── Use Case 1: Replace ──────────────────────────────── */}
+            {/* ── Replace ─────────────────────────────────────────── */}
             <div className="demo-card" id="case-replace">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                     <h3 className="demo-card-title" style={{ margin: 0 }}>🔄 Replace — Full View Swap</h3>
                     <button className="btn btn-accent btn-sm" data-bench="replace">▶ Run</button>
                 </div>
+                <div className="code-block" style={{ margin: '12px 0', fontSize: '0.72rem', lineHeight: '1.6' }}>{`Scenario: Every element changes TYPE (tab switch, route change)
 
-                <div className="code-block" style={{ margin: '12px 0', fontSize: '0.72rem', lineHeight: '1.5' }}>{`Scenario: Switch between two completely different views (tab change)
+OLD                          NEW
+┌──────────────────┐         ┌──────────────────┐
+│ <div>            │         │ <span>           │  ← type mismatch
+│   <b> #1         │  ────►  │   <strong> 1.    │  ← type mismatch
+│   <i> Item 1     │         │   <code> ITEM 1  │  ← type mismatch
+│   <em> 2         │         │   <small> v1     │  ← type mismatch
+├──────────────────┤         ├──────────────────┤
+│ <div>            │         │ <span>           │
+│   <b> #2 ...     │         │   <strong> 2. ...│
+└──── × 3000 ──────┘         └──── × 3000 ──────┘
 
-OLD VIEW                   NEW VIEW
-┌──────────────┐           ┌──────────────┐
-│ <div>        │           │ <section>    │
-│   <span>A    │    ───►   │   <article>X │
-│   <span>B    │           │   <article>Y │
-│   <span>C    │           │   <article>Z │
-└──────────────┘           └──────────────┘
-
-Replace:    Remove all → Mount all                ← FASTEST
-Sequential: Try patch div→section (fail) → remove+create each
-Keyed:      Build map → find 0 matches → remove all + create all + map overhead`}</div>
-
+Replace    → remove all, mount all  (two simple loops, no comparisons)
+Sequential → for EACH: compare type → mismatch → remove + mount  (N comparisons)
+Keyed      → build Map(3000) → 0 matches → remove all + mount all  (map overhead)`}</div>
                 <div id="result-replace" className="result-box">
                     <span style={{ color: 'var(--color-muted)' }}>Click ▶ Run to benchmark</span>
                 </div>
             </div>
 
-            {/* ── Use Case 2: Sequential ──────────────────────────── */}
+            {/* ── Sequential ──────────────────────────────────────── */}
             <div className="demo-card" id="case-sequential">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                     <h3 className="demo-card-title" style={{ margin: 0 }}>📋 Sequential — Append to List</h3>
                     <button className="btn btn-accent btn-sm" data-bench="sequential">▶ Run</button>
                 </div>
+                <div className="code-block" style={{ margin: '12px 0', fontSize: '0.72rem', lineHeight: '1.6' }}>{`Scenario: Append new items to an existing list (chat, logs, feed)
 
-                <div className="code-block" style={{ margin: '12px 0', fontSize: '0.72rem', lineHeight: '1.5' }}>{`Scenario: Append new messages to a chat / log feed
+BEFORE (3000 items)         AFTER (3500 items)
+┌──────────────────┐        ┌──────────────────┐
+│ #1  Item 1       │        │ #1  Item 1       │  ← identical, skip
+│ #2  Item 2       │        │ #2  Item 2       │  ← identical, skip
+│ ...              │ ────►  │ ...              │
+│ #3000 Item 3000  │        │ #3000 Item 3000  │  ← identical, skip
+│                  │        │ #3001 New 0  ★   │  ← mount new
+│                  │        │ ...        + 500 │
+└──────────────────┘        └──────────────────┘
 
-BEFORE                     AFTER
-┌──────────────┐           ┌──────────────┐
-│ Item 1       │           │ Item 1       │  ← same position, no work
-│ Item 2       │    ───►   │ Item 2       │  ← same position, no work
-│ Item 3       │           │ Item 3       │  ← same position, no work
-│              │           │ Item 4 (new) │  ← just append
-└──────────────┘           └──────────────┘
-
-Sequential: Walk index-by-index, skip unchanged, append new   ← FASTEST
-Keyed:      Build key→fiber Map + Set + LIS for ALL items (unnecessary overhead)
-Replace:    Destroy everything + rebuild from scratch`}</div>
-
+Sequential → index-by-index: skip 3000 unchanged, mount 500 new (minimal work)
+Keyed      → build Map(3000), match all by key, mount 500 new   (map overhead)
+Replace    → destroy ALL 3000 + create ALL 3500               (total waste)`}</div>
                 <div id="result-sequential" className="result-box">
                     <span style={{ color: 'var(--color-muted)' }}>Click ▶ Run to benchmark</span>
                 </div>
             </div>
 
-            {/* ── Use Case 3: Keyed ──────────────────────────────── */}
+            {/* ── Keyed ───────────────────────────────────────────── */}
             <div className="demo-card" id="case-keyed">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                    <h3 className="demo-card-title" style={{ margin: 0 }}>🔑 Keyed — Reorder / Sort</h3>
+                    <h3 className="demo-card-title" style={{ margin: 0 }}>🔑 Keyed — Reorder Complex Items</h3>
                     <button className="btn btn-accent btn-sm" data-bench="keyed">▶ Run</button>
                 </div>
+                <div className="code-block" style={{ margin: '12px 0', fontSize: '0.72rem', lineHeight: '1.6' }}>{`Scenario: Reverse a list of complex items (table sort, drag-drop)
+Each item has 12 child elements with text + attributes
 
-                <div className="code-block" style={{ margin: '12px 0', fontSize: '0.72rem', lineHeight: '1.5' }}>{`Scenario: Reverse a sorted list (table sort, drag-drop)
+BEFORE                         AFTER (reversed)
+┌───────────────────────┐      ┌───────────────────────┐
+│ key=0    #0  Item 0   │      │ key=2999 #2999  ...   │
+│   12 child spans      │      │   12 child spans      │
+│ key=1    #1  Item 1   │ ──►  │ key=2998 #2998  ...   │
+│   12 child spans      │      │   12 child spans      │
+│ ...                   │      │ ...                   │
+│ key=2999 #2999 ...    │      │ key=0    #0  Item 0   │
+└─── × 3000 ────────────┘      └─── × 3000 ────────────┘
 
-BEFORE                     AFTER
-┌──────────────┐           ┌──────────────┐
-│ key=1 Item A │           │ key=3 Item C │  ← node MOVED, not recreated
-│ key=2 Item B │    ───►   │ key=2 Item B │  ← stays in place (LIS)
-│ key=3 Item C │           │ key=1 Item A │  ← node MOVED, not recreated
-└──────────────┘           └──────────────┘
-
-Keyed:      Match by key → move 2 nodes, keep 1 (LIS)        ← FASTEST
-Sequential: Position 0 has different content → patches all props on every node
-Replace:    Destroy ALL nodes + create ALL nodes from scratch`}</div>
-
+Keyed      → match all by key → 0 prop changes → move ~2999 nodes
+Sequential → each position has DIFFERENT content → patch ALL 12 children × 3000
+Replace    → destroy ALL 3000×12 + create ALL 3000×12  (36,000 DOM ops)`}</div>
                 <div id="result-keyed" className="result-box">
                     <span style={{ color: 'var(--color-muted)' }}>Click ▶ Run to benchmark</span>
                 </div>
             </div>
 
-            {/* ── Live Playground ─────────────────────────────────── */}
+            {/* ── Live Playground ──────────────────────────────────── */}
             <div className="demo-card">
                 <h3 className="demo-card-title">🔬 Live Playground</h3>
                 <p className="demo-card-description">
@@ -118,7 +120,6 @@ Replace:    Destroy ALL nodes + create ALL nodes from scratch`}</div>
                 </div>
 
                 <div id="playground-stats" style={{ marginBottom: '12px' }}></div>
-
                 <div id="playground-list" className="result-box" style={{
                     maxHeight: '300px', overflow: 'auto', padding: '6px',
                 }}></div>
@@ -127,10 +128,10 @@ Replace:    Destroy ALL nodes + create ALL nodes from scratch`}</div>
             {/* Hidden benchmark workspace */}
             <div id="bench-workspace" style={{ position: 'absolute', left: '-9999px', top: 0 }}></div>
 
-            {/* ── API Reference ────────────────────────────────────── */}
+            {/* ── API Reference ─────────────────────────────────────── */}
             <div className="demo-card">
                 <h3 className="demo-card-title">📝 API</h3>
-                <div className="code-block">{`// Per-render override (recommended):
+                <div className="code-block">{`// Per-render override:
 render(<List items={data} />, el, { reconciler: 'keyed' });
 
 // Global default:

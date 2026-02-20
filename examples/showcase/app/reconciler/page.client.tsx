@@ -3,7 +3,6 @@ import type { ReconcilerName } from 'melina/client';
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
-type Item = { id: number; label: string; value: number };
 type StrategyResult = { strategy: string; avgMs: number };
 type BenchResult = {
     description: string;
@@ -15,77 +14,75 @@ type BenchResult = {
 
 let nextId = 0;
 
-function createItems(n: number): Item[] {
-    return Array.from({ length: n }, () => {
-        const id = ++nextId;
-        return { id, label: `Item ${id}`, value: id * 7 };
-    });
-}
-
-function shuffle<T>(arr: T[]): T[] {
-    const a = [...arr];
-    for (let i = a.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a;
-}
-
 // ─── Components ─────────────────────────────────────────────────────────────────
 
 /**
- * "View A" — renders items as <div> with nested spans.
- * Used as the OLD view in the Replace benchmark.
+ * SIMPLE item — used for sequential benchmark where items are cheap to patch.
  */
-function ViewA({ items }: { items: Item[] }) {
+function SimpleItem({ id, label }: { id: number; label: string }) {
     return (
-        <div>
-            {items.map(item => (
-                <div key={item.id} className="list-item">
-                    <span className="list-item-key">#{item.id}</span>
-                    <span className="list-item-label">{item.label}</span>
-                    <span className="list-item-value">{item.value}</span>
-                </div>
-            ))}
+        <div className="list-item" data-id={id}>
+            <span className="list-item-key">#{id}</span>
+            <span className="list-item-label">{label}</span>
         </div>
     );
 }
 
 /**
- * "View B" — completely different element structure.
- * Uses <section> > <article> > <p> + <em> instead of <div> > <span>.
- * This forces type mismatches at every level, making diffing wasteful.
+ * COMPLEX item — used for keyed benchmark. Has 12 child elements with various
+ * attributes and text. This makes patching all children VERY expensive compared
+ * to just moving the DOM node (insertBefore).
+ *
+ * When reordered:
+ * - Keyed: matches by key → props identical → 0 patches needed → just moves nodes
+ * - Sequential: position mismatch → patches ALL 12 children's text + attributes
  */
-function ViewB({ items }: { items: Item[] }) {
+function ComplexItem({ id, label, val }: { id: number; label: string; val: number }) {
+    const even = id % 2 === 0;
     return (
-        <section>
-            {items.map(item => (
-                <article key={`b-${item.id}`} className="list-item">
-                    <p className="list-item-key">{item.id}.</p>
-                    <em className="list-item-label">{item.label.toUpperCase()}</em>
-                    <strong className="list-item-value">val={item.value}</strong>
-                </article>
-            ))}
-        </section>
+        <div className="list-item" data-id={id} data-val={val} data-even={even ? 'yes' : 'no'}>
+            <span className="list-item-key">#{id}</span>
+            <span className="list-item-label">{label}</span>
+            <span className="list-item-value">{val}</span>
+            <span data-tag="a">{even ? '●' : '○'}</span>
+            <span data-tag="b">{label.length}</span>
+            <span data-tag="c">{val * 3}</span>
+            <span data-tag="d">{id % 7}</span>
+            <span data-tag="e">{even ? 'even' : 'odd'}</span>
+            <span data-tag="f">{Math.floor(val / 10)}</span>
+            <span data-tag="g">{'★'.repeat((id % 5) + 1)}</span>
+            <span data-tag="h">{id.toString(16)}</span>
+            <span data-tag="i">{`${id}-${val}`}</span>
+        </div>
     );
 }
 
 /**
- * Keyed item list — complex items with multiple children to make
- * DOM node creation expensive relative to moving.
+ * View-A: renders 3000 items as <div> elements.
+ * Used for the Replace benchmark — paired with View-B which uses <span>.
  */
-function KeyedList({ items }: { items: Item[] }) {
+function ViewAItem({ id, label }: { id: number; label: string }) {
     return (
-        <div>
-            {items.map(item => (
-                <div key={item.id} className="list-item" data-id={item.id}>
-                    <span className="list-item-key">#{item.id}</span>
-                    <span className="list-item-label">{item.label}</span>
-                    <span className="list-item-value">{item.value}</span>
-                    <span style={{ opacity: 0.3, fontSize: '0.6rem' }}>{item.id % 2 === 0 ? 'even' : 'odd'}</span>
-                </div>
-            ))}
+        <div className="list-item" data-id={id}>
+            <b className="list-item-key">#{id}</b>
+            <i className="list-item-label">{label}</i>
+            <em data-x="1">{id * 2}</em>
         </div>
+    );
+}
+
+/**
+ * View-B: renders items as <span> elements with completely different child types.
+ * The type mismatch (<div>→<span>) at every position forces all strategies to
+ * do remove+create. Replace wins because it skips per-element type comparison.
+ */
+function ViewBItem({ id, label }: { id: number; label: string }) {
+    return (
+        <span className="list-item" data-id={id}>
+            <strong className="list-item-key">{id}.</strong>
+            <code className="list-item-label">{label.toUpperCase()}</code>
+            <small data-x="2">v{id}</small>
+        </span>
     );
 }
 
@@ -99,15 +96,19 @@ function ResultCard({ result }: { result: BenchResult }) {
 
     return (
         <div>
-            <div style={{
-                fontSize: '0.75rem', color: 'var(--color-muted)', marginBottom: '10px',
-            }}>
-                {result.description} — <strong style={{ color: 'var(--color-success)' }}>🏆 {result.winner}</strong> wins ({speedup}× faster)
+            <div style={{ fontSize: '0.75rem', color: 'var(--color-muted)', marginBottom: '10px' }}>
+                {result.description}
+            </div>
+            <div style={{ fontSize: '0.8rem', marginBottom: '10px', fontWeight: 600 }}>
+                <span style={{ color: 'var(--color-success)' }}>🏆 {result.winner}</span>
+                {' '}wins by <span style={{ color: 'var(--color-success)' }}>{speedup}×</span>
             </div>
             {sorted.map((s, i) => {
                 const isWinner = i === 0;
                 const barWidth = Math.max(4, (s.avgMs / slowest) * 100);
-                const barColor = isWinner ? 'var(--color-success)' : i === sorted.length - 1 ? 'var(--color-danger)' : 'var(--color-accent)';
+                const barColor = isWinner
+                    ? 'var(--color-success)'
+                    : i === sorted.length - 1 ? 'var(--color-danger)' : 'var(--color-accent)';
                 return (
                     <div key={i} style={{
                         display: 'flex', alignItems: 'center', gap: '8px',
@@ -121,7 +122,10 @@ function ResultCard({ result }: { result: BenchResult }) {
                             {isWinner ? '🏆 ' : '   '}{s.strategy}
                         </span>
                         <div className="perf-bar" style={{ flex: 1 }}>
-                            <div className="perf-bar-fill" style={{ width: `${barWidth}%`, background: barColor }}></div>
+                            <div className="perf-bar-fill" style={{
+                                width: `${barWidth}%`,
+                                background: barColor,
+                            }}></div>
                         </div>
                         <span style={{
                             minWidth: '75px', textAlign: 'right', fontFamily: 'var(--font-mono)',
@@ -140,13 +144,13 @@ function ResultCard({ result }: { result: BenchResult }) {
 function PlaygroundStats({ strategy, itemCount, lastOp, renderTime }: {
     strategy: string; itemCount: number; lastOp: string; renderTime: number;
 }) {
-    const timeColor = renderTime < 2 ? 'var(--color-success)' : renderTime < 10 ? 'var(--color-warning)' : 'var(--color-danger)';
+    const c = renderTime < 2 ? 'var(--color-success)' : renderTime < 10 ? 'var(--color-warning)' : 'var(--color-danger)';
     return (
         <div style={{ display: 'flex', gap: '16px', fontSize: '0.8rem', flexWrap: 'wrap' }}>
             <div><span style={{ color: 'var(--color-muted)' }}>Strategy:</span> <strong>{strategy}</strong></div>
             <div><span style={{ color: 'var(--color-muted)' }}>Items:</span> <strong>{itemCount}</strong></div>
             <div><span style={{ color: 'var(--color-muted)' }}>Last op:</span> <strong>{lastOp}</strong></div>
-            <div><span style={{ color: 'var(--color-muted)' }}>Render:</span> <strong style={{ color: timeColor }}>{renderTime.toFixed(2)}ms</strong></div>
+            <div><span style={{ color: 'var(--color-muted)' }}>Render:</span> <strong style={{ color: c }}>{renderTime.toFixed(2)}ms</strong></div>
         </div>
     );
 }
@@ -154,138 +158,173 @@ function PlaygroundStats({ strategy, itemCount, lastOp, renderTime }: {
 // ─── Benchmark Engine ───────────────────────────────────────────────────────────
 
 const STRATEGIES: ReconcilerName[] = ['replace', 'sequential', 'keyed'];
+const N = 3000;    // list size
+const RUNS = 15;   // runs per strategy (outliers trimmed)
+
+function trimmedMean(times: number[]): number {
+    const sorted = [...times].sort((a, b) => a - b);
+    // Trim 20% from each end for robust mean
+    const trim = Math.floor(sorted.length * 0.2);
+    const trimmed = sorted.slice(trim, sorted.length - trim);
+    return trimmed.reduce((a, b) => a + b, 0) / trimmed.length;
+}
 
 /**
- * Large list sizes amplify the algorithmic differences.
- * With 3000 items and 15 runs, the winner is consistent and clear.
- */
-const LIST_SIZE = 3000;
-const APPEND_SIZE = 500;
-const RUNS = 15;
-
-type BenchmarkFn = (workspace: HTMLElement) => BenchResult;
-
-/**
- * REPLACE BENCHMARK
- * Swaps between ViewA and ViewB — completely different element types.
- * Replace wins because it skips per-element diff entirely.
- * Sequential wastes time trying to patch div→article (type mismatch → remove+create per element).
- * Keyed wastes time building a Map that finds no matches.
+ * ════════════════════════════════════════════════════════════════
+ * REPLACE BENCHMARK — Full View Swap (Different Element Types)
+ * ════════════════════════════════════════════════════════════════
+ *
+ * Old: 3000 × <div> with <b>, <i>, <em> children
+ * New: 3000 × <span> with <strong>, <code>, <small> children
+ *
+ * Every child position has a TYPE MISMATCH (div→span, b→strong, etc.)
+ * ALL strategies must remove+create at each position.
+ *
+ * Replace wins because:
+ *   - It does: loop(remove all) → loop(mount all). Two simple loops.
+ *   - Sequential does: for each i { compare type → mismatch → remove + mount }
+ *     paying string comparison + branch overhead per element.
+ *   - Keyed does: Build Map(3000) + for each i { Map.get → miss } → remove all + mount all
+ *     paying full Map allocation + lookup overhead.
  */
 function benchReplace(workspace: HTMLElement): BenchResult {
     const results: StrategyResult[] = [];
 
+    const itemsA = Array.from({ length: N }, (_, i) => ({ id: i, label: `Item ${i}` }));
+    const itemsB = Array.from({ length: N }, (_, i) => ({ id: N + i, label: `Alt ${i}` }));
+
     for (const strategy of STRATEGIES) {
         const times: number[] = [];
-
         for (let run = 0; run < RUNS; run++) {
-            nextId = 0;
-            const items = createItems(LIST_SIZE);
+            // Mount View A
+            render(
+                <div>{itemsA.map(it => <ViewAItem key={it.id} id={it.id} label={it.label} />)}</div>,
+                workspace, { reconciler: strategy },
+            );
 
-            // Mount initial view (ViewA)
-            render(<ViewA items={items} />, workspace, { reconciler: strategy });
-
-            // Generate completely different items for ViewB
-            nextId = 0;
-            const itemsB = createItems(LIST_SIZE);
-
-            // Measure: swap to ViewB (different element types everywhere)
+            // Measure: swap to View B (different element types everywhere)
             const start = performance.now();
-            render(<ViewB items={itemsB} />, workspace, { reconciler: strategy });
+            render(
+                <div>{itemsB.map(it => <ViewBItem key={it.id} id={it.id} label={it.label} />)}</div>,
+                workspace, { reconciler: strategy },
+            );
             times.push(performance.now() - start);
         }
         workspace.innerHTML = '';
-
-        const avgMs = times.sort((a, b) => a - b).slice(2, -2) // trim outliers
-            .reduce((a, b) => a + b, 0) / (times.length - 4 || 1);
-        results.push({ strategy, avgMs });
+        results.push({ strategy, avgMs: trimmedMean(times) });
     }
 
-    const winner = results.reduce((best, cur) => cur.avgMs < best.avgMs ? cur : best).strategy;
-    return { description: `${LIST_SIZE} items, full view swap (different element types), ${RUNS} runs`, winner, strategies: results };
+    const winner = results.reduce((a, b) => a.avgMs < b.avgMs ? a : b).strategy;
+    return { description: `${N} items, div→span swap (all types change), ${RUNS} runs`, winner, strategies: results };
 }
 
 /**
- * SEQUENTIAL BENCHMARK
- * Appends items to a large existing list — items at existing positions stay identical.
- * Sequential wins because index-by-index patching skips unchanged elements in O(1) each,
- * then just appends new nodes. No Map/Set/LIS overhead.
- * Keyed builds a key map for ALL existing items just to match them.
- * Replace destroys everything and rebuilds.
+ * ════════════════════════════════════════════════════════════════
+ * SEQUENTIAL BENCHMARK — Pure Append
+ * ════════════════════════════════════════════════════════════════
+ *
+ * Old: 3000 items
+ * New: 3000 items (unchanged) + 500 new items
+ *
+ * Sequential wins because:
+ *   - Walks index 0..2999: same old/new at each position → patchFiber
+ *     sees identical VNode → does NOTHING (no DOM writes)
+ *   - Walks index 3000..3499: no old fiber → mountVNode (append)
+ *   - Total: 0 DOM writes on existing + 500 creates
+ *
+ *   - Keyed: builds Map(3000) + matches all 3000 by key (3000 Map.get hits) +
+ *     appends 500. Same DOM ops but pays Map/Set/LIS overhead.
+ *   - Replace: removes ALL 3000 + mounts ALL 3500. Absurd waste.
  */
 function benchSequential(workspace: HTMLElement): BenchResult {
     const results: StrategyResult[] = [];
 
+    const baseItems = Array.from({ length: N }, (_, i) => ({ id: i, label: `Item ${i}` }));
+    const appendedItems = [
+        ...baseItems,
+        ...Array.from({ length: 500 }, (_, i) => ({ id: N + i, label: `New ${i}` })),
+    ];
+
     for (const strategy of STRATEGIES) {
         const times: number[] = [];
-
         for (let run = 0; run < RUNS; run++) {
-            nextId = 0;
-            const items = createItems(LIST_SIZE);
+            // Mount base list
+            render(
+                <div>{baseItems.map(it => <SimpleItem key={it.id} id={it.id} label={it.label} />)}</div>,
+                workspace, { reconciler: strategy },
+            );
 
-            // Mount the initial list
-            render(<ViewA items={items} />, workspace, { reconciler: strategy });
-
-            // Create the appended list (same items + new ones)
-            const appended = [...items, ...createItems(APPEND_SIZE)];
-
-            // Measure: render with appended items
+            // Measure: append 500 items
             const start = performance.now();
-            render(<ViewA items={appended} />, workspace, { reconciler: strategy });
+            render(
+                <div>{appendedItems.map(it => <SimpleItem key={it.id} id={it.id} label={it.label} />)}</div>,
+                workspace, { reconciler: strategy },
+            );
             times.push(performance.now() - start);
         }
         workspace.innerHTML = '';
-
-        const avgMs = times.sort((a, b) => a - b).slice(2, -2)
-            .reduce((a, b) => a + b, 0) / (times.length - 4 || 1);
-        results.push({ strategy, avgMs });
+        results.push({ strategy, avgMs: trimmedMean(times) });
     }
 
-    const winner = results.reduce((best, cur) => cur.avgMs < best.avgMs ? cur : best).strategy;
-    return { description: `${LIST_SIZE}→${LIST_SIZE + APPEND_SIZE} items appended, ${RUNS} runs`, winner, strategies: results };
+    const winner = results.reduce((a, b) => a.avgMs < b.avgMs ? a : b).strategy;
+    return { description: `${N}→${N + 500} items appended, ${RUNS} runs`, winner, strategies: results };
 }
 
 /**
- * KEYED BENCHMARK
- * Reverses a large list of complex items.
- * Keyed wins because it MOVES existing DOM nodes (via LIS → only 2 nodes need moves in a reversal).
- * Sequential patches every position — each item at index i now has different content,
- * so it updates every prop on every child (expensive for complex items).
- * Replace destroys all nodes and creates new ones from scratch.
+ * ════════════════════════════════════════════════════════════════
+ * KEYED BENCHMARK — Reverse Complex Items
+ * ════════════════════════════════════════════════════════════════
+ *
+ * Old: 3000 complex items (12 children each) in order [0, 1, 2, ..., 2999]
+ * New: same 3000 items reversed [2999, 2998, ..., 0]
+ *
+ * Keyed wins because:
+ *   - Matches ALL 3000 items by key → patchFiber sees identical props at
+ *     each matched pair → ZERO DOM writes needed
+ *   - Computes LIS (length ~1 for a reversal) → moves ~2999 nodes
+ *   - Total: 2999 insertBefore (DOM tree rearrangement, no creation)
+ *
+ *   - Sequential: at each position i, old item ≠ new item (different data).
+ *     Same <div> tag → patches ALL 12 children + 3 data-attributes per item.
+ *     Total: 3000 × (12 text updates + 3 attr updates) = ~45,000 DOM writes
+ *
+ *   - Replace: removes ALL 3000 nodes (each with 12 children) + creates ALL
+ *     3000 new nodes. Total: ~36,000 removes + ~36,000 creates = WAY slower.
  */
 function benchKeyed(workspace: HTMLElement): BenchResult {
     const results: StrategyResult[] = [];
 
+    const items = Array.from({ length: N }, (_, i) => ({
+        id: i, label: `Item ${i}`, val: i * 7,
+    }));
+    const reversed = [...items].reverse();
+
     for (const strategy of STRATEGIES) {
         const times: number[] = [];
-
         for (let run = 0; run < RUNS; run++) {
-            nextId = 0;
-            const items = createItems(LIST_SIZE);
+            // Mount in order
+            render(
+                <div>{items.map(it => <ComplexItem key={it.id} id={it.id} label={it.label} val={it.val} />)}</div>,
+                workspace, { reconciler: strategy },
+            );
 
-            // Mount initial list (keyed)
-            render(<KeyedList items={items} />, workspace, { reconciler: strategy });
-
-            // Reverse the list (same items, different order)
-            const reversed = [...items].reverse();
-
-            // Measure: render reversed list
+            // Measure: reverse
             const start = performance.now();
-            render(<KeyedList items={reversed} />, workspace, { reconciler: strategy });
+            render(
+                <div>{reversed.map(it => <ComplexItem key={it.id} id={it.id} label={it.label} val={it.val} />)}</div>,
+                workspace, { reconciler: strategy },
+            );
             times.push(performance.now() - start);
         }
         workspace.innerHTML = '';
-
-        const avgMs = times.sort((a, b) => a - b).slice(2, -2)
-            .reduce((a, b) => a + b, 0) / (times.length - 4 || 1);
-        results.push({ strategy, avgMs });
+        results.push({ strategy, avgMs: trimmedMean(times) });
     }
 
-    const winner = results.reduce((best, cur) => cur.avgMs < best.avgMs ? cur : best).strategy;
-    return { description: `${LIST_SIZE} items reversed (keyed), ${RUNS} runs`, winner, strategies: results };
+    const winner = results.reduce((a, b) => a.avgMs < b.avgMs ? a : b).strategy;
+    return { description: `${N} complex items (12 children each) reversed, ${RUNS} runs`, winner, strategies: results };
 }
 
-const BENCHMARKS: Record<string, BenchmarkFn> = {
+const BENCHMARKS: Record<string, (ws: HTMLElement) => BenchResult> = {
     replace: benchReplace,
     sequential: benchSequential,
     keyed: benchKeyed,
@@ -307,57 +346,56 @@ export default function mount() {
 
     document.querySelectorAll('[data-bench]').forEach(btn => {
         btn.addEventListener('click', () => {
-            const benchName = (btn as HTMLElement).dataset.bench!;
-            const benchFn = BENCHMARKS[benchName];
-            const resultEl = document.getElementById(`result-${benchName}`);
-            if (!benchFn || !resultEl) return;
+            const name = (btn as HTMLElement).dataset.bench!;
+            const fn = BENCHMARKS[name];
+            const el = document.getElementById(`result-${name}`);
+            if (!fn || !el) return;
 
-            // Disable button during run
             btn.classList.add('disabled');
-            render(<span style={{ color: 'var(--color-accent)' }}>⏳ Benchmarking {LIST_SIZE} items × {RUNS} runs...</span>, resultEl);
+            render(<span style={{ color: 'var(--color-accent)' }}>⏳ Benchmarking {N} items × {RUNS} runs...</span>, el);
 
-            // Defer to let UI update
             setTimeout(() => {
-                const result = benchFn(workspace!);
-                render(<ResultCard result={result} />, resultEl);
+                const result = fn(workspace!);
+                render(<ResultCard result={result} />, el);
                 btn.classList.remove('disabled');
             }, 32);
         });
     });
 
     // ── Live Playground ─────────────────────────────────────────────────────
+
+    type PlayItem = { id: number; label: string };
     nextId = 0;
-    let items: Item[] = createItems(12);
+    let items: PlayItem[] = Array.from({ length: 12 }, () => {
+        const id = ++nextId;
+        return { id, label: `Item ${id}` };
+    });
     let currentStrategy: ReconcilerName = 'auto';
     let lastOp = 'init';
-    let lastRenderTime = 0;
-
-    function ItemList({ items: listItems }: { items: Item[] }) {
-        return (
-            <div className="item-list">
-                {listItems.map(item => (
-                    <div className="list-item" key={item.id}>
-                        <span className="list-item-key">#{item.id}</span>
-                        <span className="list-item-label">{item.label}</span>
-                    </div>
-                ))}
-            </div>
-        );
-    }
+    let lastTime = 0;
 
     function renderPlayground() {
-        const start = performance.now();
-        render(<ItemList items={items} />, playgroundList!, { reconciler: currentStrategy });
-        lastRenderTime = performance.now() - start;
+        const t0 = performance.now();
         render(
-            <PlaygroundStats strategy={currentStrategy} itemCount={items.length} lastOp={lastOp} renderTime={lastRenderTime} />,
-            playgroundStats!
+            <div className="item-list">
+                {items.map(it => (
+                    <div className="list-item" key={it.id}>
+                        <span className="list-item-key">#{it.id}</span>
+                        <span className="list-item-label">{it.label}</span>
+                    </div>
+                ))}
+            </div>,
+            playgroundList!,
+            { reconciler: currentStrategy },
+        );
+        lastTime = performance.now() - t0;
+        render(
+            <PlaygroundStats strategy={currentStrategy} itemCount={items.length} lastOp={lastOp} renderTime={lastTime} />,
+            playgroundStats!,
         );
     }
-
     renderPlayground();
 
-    // Strategy selector
     document.getElementById('strategy-selector')?.addEventListener('click', (e) => {
         const btn = (e.target as HTMLElement).closest('[data-strategy]');
         if (!btn) return;
@@ -368,22 +406,30 @@ export default function mount() {
         renderPlayground();
     });
 
-    // Playground actions
+    function shuffle<T>(arr: T[]): T[] {
+        const a = [...arr];
+        for (let i = a.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [a[i], a[j]] = [a[j], a[i]];
+        }
+        return a;
+    }
+
     const ACTIONS: Record<string, () => void> = {
-        'add': () => { items = [...items, { id: ++nextId, label: `Item ${nextId}`, value: nextId * 7 }]; lastOp = 'add'; },
+        'add': () => { const id = ++nextId; items = [...items, { id, label: `Item ${id}` }]; lastOp = 'add'; },
         'remove-last': () => { items = items.slice(0, -1); lastOp = 'remove last'; },
         'shuffle': () => { items = shuffle(items); lastOp = 'shuffle'; },
         'reverse': () => { items = [...items].reverse(); lastOp = 'reverse'; },
-        'prepend': () => { items = [{ id: ++nextId, label: `Item ${nextId}`, value: nextId * 7 }, ...items]; lastOp = 'prepend'; },
+        'prepend': () => { const id = ++nextId; items = [{ id, label: `Item ${id}` }, ...items]; lastOp = 'prepend'; },
         'clear': () => { items = []; lastOp = 'clear'; },
-        'reset': () => { nextId = 0; items = createItems(12); lastOp = 'reset'; },
+        'reset': () => { nextId = 0; items = Array.from({ length: 12 }, () => { const id = ++nextId; return { id, label: `Item ${id}` }; }); lastOp = 'reset'; },
     };
 
     document.querySelectorAll('[data-action]').forEach(btn => {
         btn.addEventListener('click', () => {
-            const action = (btn as HTMLElement).dataset.action!;
-            const fn = ACTIONS[action];
-            if (fn) { fn(); renderPlayground(); }
+            const a = (btn as HTMLElement).dataset.action!;
+            ACTIONS[a]?.();
+            renderPlayground();
         });
     });
 
