@@ -5,7 +5,12 @@ import type { ReconcilerName } from 'melina/client';
 
 type Item = { id: number; label: string; color: string };
 type StrategyResult = { strategy: string; avgMs: number };
-type ScenarioResult = { name: string; strategies: StrategyResult[]; winner: string };
+type UseCaseResult = {
+    name: string;
+    description: string;
+    winner: string;
+    strategies: StrategyResult[];
+};
 
 // ─── Data Helpers ───────────────────────────────────────────────────────────────
 
@@ -46,6 +51,61 @@ function ItemList({ items }: { items: Item[] }) {
     );
 }
 
+/** A completely different view — simulates tab swap / page navigation */
+function AltView({ items }: { items: Item[] }) {
+    return (
+        <div className="item-list">
+            {items.map(item => (
+                <div className="list-item" key={`alt-${item.id}`}>
+                    <span className="list-item-key" style={{ color: 'var(--color-warning)' }}>★{item.id}</span>
+                    <span className="list-item-label">{item.label.toUpperCase()}</span>
+                    <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: item.color, flexShrink: 0 }}></span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function ResultCard({ result }: { result: UseCaseResult }) {
+    const maxTime = Math.max(...result.strategies.map(s => s.avgMs), 0.1);
+    return (
+        <div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--color-muted)', marginBottom: '10px' }}>
+                {result.description}
+            </div>
+            {result.strategies.map((s, i) => {
+                const isWinner = s.strategy === result.winner;
+                const barWidth = Math.max(3, (s.avgMs / maxTime) * 100);
+                const barColor = isWinner ? 'var(--color-success)' : 'var(--color-accent)';
+                return (
+                    <div key={i} style={{
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        marginBottom: '6px', fontSize: '0.78rem',
+                    }}>
+                        <span style={{
+                            minWidth: '90px', fontFamily: 'var(--font-mono)',
+                            color: isWinner ? 'var(--color-success)' : 'var(--color-foreground)',
+                            fontWeight: isWinner ? 700 : 400,
+                        }}>
+                            {isWinner ? '🏆 ' : '   '}{s.strategy}
+                        </span>
+                        <div className="perf-bar" style={{ flex: 1 }}>
+                            <div className="perf-bar-fill" style={{ width: `${barWidth}%`, background: barColor }}></div>
+                        </div>
+                        <span style={{
+                            minWidth: '65px', textAlign: 'right', fontFamily: 'var(--font-mono)',
+                            color: isWinner ? 'var(--color-success)' : 'inherit',
+                            fontWeight: isWinner ? 700 : 400,
+                        }}>
+                            {s.avgMs.toFixed(2)}ms
+                        </span>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
 function PlaygroundStats({ strategy, itemCount, lastOp, renderTime }: {
     strategy: string; itemCount: number; lastOp: string; renderTime: number;
 }) {
@@ -60,85 +120,98 @@ function PlaygroundStats({ strategy, itemCount, lastOp, renderTime }: {
     );
 }
 
-function BenchmarkResults({ scenarios }: { scenarios: ScenarioResult[] }) {
-    if (scenarios.length === 0) {
-        return <span style={{ color: 'var(--color-muted)' }}>Click a scenario or "Run All" to start.</span>;
-    }
-    return (
-        <div>
-            {scenarios.map((scenario, si) => {
-                const maxTime = Math.max(...scenario.strategies.map(s => s.avgMs), 0.1);
-                return (
-                    <div key={si} style={{
-                        marginBottom: '16px', paddingBottom: '16px',
-                        borderBottom: si < scenarios.length - 1 ? '1px solid var(--color-border)' : 'none',
-                    }}>
-                        <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '8px' }}>{scenario.name}</div>
-                        {scenario.strategies.map((s, i) => {
-                            const isWinner = s.strategy === scenario.winner;
-                            const barWidth = Math.max(2, (s.avgMs / maxTime) * 100);
-                            return (
-                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', fontSize: '0.75rem' }}>
-                                    <span style={{
-                                        minWidth: '80px', fontFamily: 'var(--font-mono)',
-                                        color: isWinner ? 'var(--color-success)' : 'var(--color-foreground)',
-                                    }}>
-                                        {isWinner ? '🏆 ' : '   '}{s.strategy}
-                                    </span>
-                                    <div className="perf-bar" style={{ flex: 1 }}>
-                                        <div className="perf-bar-fill" style={{
-                                            width: `${barWidth}%`,
-                                            background: isWinner ? 'var(--color-success)' : 'var(--color-accent)',
-                                        }}></div>
-                                    </div>
-                                    <span style={{ minWidth: '60px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                                        {s.avgMs.toFixed(2)}ms
-                                    </span>
-                                </div>
-                            );
-                        })}
-                    </div>
-                );
-            })}
-        </div>
-    );
-}
-
 // ─── Benchmark Engine ───────────────────────────────────────────────────────────
 
 const STRATEGIES: ReconcilerName[] = ['replace', 'sequential', 'keyed', 'auto'];
 const LIST_SIZE = 500;
 const RUNS = 5;
 
-type Mutation = (items: Item[]) => Item[];
-
-const SCENARIOS: Record<string, { label: string; mutation: Mutation }> = {
-    shuffle: { label: '🔀 Shuffle All', mutation: items => shuffle(items) },
-    reverse: { label: '🔃 Reverse', mutation: items => [...items].reverse() },
-    prepend: { label: '⬆ Prepend 50', mutation: items => [...createItems(50), ...items] },
-    remove: { label: '✂ Remove Half', mutation: items => items.filter((_, i) => i % 2 === 0) },
-    append: { label: '⬇ Append 50', mutation: items => [...items, ...createItems(50)] },
-    'update-text': { label: '📝 Text Update', mutation: items => items.map(it => ({ ...it, label: `${it.label}!` })) },
+/**
+ * Each use case defines:
+ * - setup(): create the initial state and render it
+ * - mutation(): transform the state in a way that favors one strategy
+ */
+type UseCase = {
+    name: string;
+    description: string;
+    expectedWinner: string;
+    setup: () => Item[];
+    /** Returns [newItems, newView] — newView lets us swap to a completely different component */
+    mutate: (items: Item[]) => { items: Item[]; swapView?: boolean };
 };
 
-function runBenchmark(scenarioKey: string, workspace: HTMLElement): ScenarioResult {
-    const scenario = SCENARIOS[scenarioKey];
+const USE_CASES: UseCase[] = [
+    {
+        name: 'replace',
+        description: 'Swaps 500 items to a completely different view (tab switch). Replace wins because there\'s nothing to diff — nuke and rebuild is O(1).',
+        expectedWinner: 'replace',
+        setup: () => { nextId = 0; return createItems(LIST_SIZE); },
+        mutate: () => {
+            nextId = 0;
+            return { items: createItems(LIST_SIZE), swapView: true };
+        },
+    },
+    {
+        name: 'sequential',
+        description: 'Appends 100 items then updates all labels. Sequential wins because items stay in their positions — index-based patching skips key lookups.',
+        expectedWinner: 'sequential',
+        setup: () => { nextId = 0; return createItems(LIST_SIZE); },
+        mutate: (items) => {
+            const appended = [...items, ...createItems(100)];
+            return { items: appended.map(it => ({ ...it, label: `${it.label} ✓` })) };
+        },
+    },
+    {
+        name: 'keyed',
+        description: 'Shuffles all 500 items randomly. Keyed wins because it moves existing DOM nodes via key→fiber map instead of recreating them.',
+        expectedWinner: 'keyed',
+        setup: () => { nextId = 0; return createItems(LIST_SIZE); },
+        mutate: (items) => ({ items: shuffle(items) }),
+    },
+    {
+        name: 'auto',
+        description: 'Mixed workload: shuffles + appends + text updates. Auto adapts per-diff — it picks keyed when keys exist, sequential otherwise.',
+        expectedWinner: 'auto',
+        setup: () => { nextId = 0; return createItems(LIST_SIZE); },
+        mutate: (items) => {
+            // Mixed: shuffle first half, append new items, update labels on last quarter
+            const half = Math.floor(items.length / 2);
+            const quarter = Math.floor(items.length / 4);
+            const shuffled = shuffle(items.slice(0, half));
+            const stable = items.slice(half);
+            const combined = [...shuffled, ...stable, ...createItems(50)];
+            return {
+                items: combined.map((it, i) =>
+                    i >= combined.length - quarter ? { ...it, label: `${it.label} ★` } : it
+                ),
+            };
+        },
+    },
+];
+
+function runUseCase(useCase: UseCase, workspace: HTMLElement): UseCaseResult {
     const results: StrategyResult[] = [];
 
     for (const strategy of STRATEGIES) {
         const times: number[] = [];
         for (let run = 0; run < RUNS; run++) {
-            nextId = 0;
-            const baseItems = createItems(LIST_SIZE);
+            const baseItems = useCase.setup();
+
+            // Initial render
             render(<ItemList items={baseItems} />, workspace, { reconciler: strategy });
 
-            const mutated = scenario.mutation(baseItems);
+            // Apply mutation and measure
+            const mutation = useCase.mutate(baseItems);
             const start = performance.now();
-            render(<ItemList items={mutated} />, workspace, { reconciler: strategy });
+            if (mutation.swapView) {
+                render(<AltView items={mutation.items} />, workspace, { reconciler: strategy });
+            } else {
+                render(<ItemList items={mutation.items} />, workspace, { reconciler: strategy });
+            }
             times.push(performance.now() - start);
         }
 
-        // Clear workspace between strategies
+        // Cleanup
         workspace.innerHTML = '';
 
         const avgMs = times.reduce((a, b) => a + b, 0) / times.length;
@@ -146,55 +219,82 @@ function runBenchmark(scenarioKey: string, workspace: HTMLElement): ScenarioResu
     }
 
     const winner = results.reduce((best, cur) => cur.avgMs < best.avgMs ? cur : best).strategy;
-    return { name: scenario.label, strategies: results, winner };
+    return {
+        name: useCase.name,
+        description: useCase.description,
+        winner,
+        strategies: results,
+    };
 }
 
 // ─── Mount ──────────────────────────────────────────────────────────────────────
 
 export default function mount() {
-    const benchResults = document.getElementById('bench-results');
-    const benchWorkspace = document.getElementById('bench-workspace');
+    const workspace = document.getElementById('bench-workspace');
     const playgroundList = document.getElementById('playground-list');
     const playgroundStats = document.getElementById('playground-stats');
+    const runAllBtn = document.getElementById('run-all-btn');
+    const runAllStatus = document.getElementById('run-all-status');
 
-    if (!benchResults || !benchWorkspace || !playgroundList || !playgroundStats) {
+    if (!workspace || !playgroundList || !playgroundStats || !runAllBtn) {
         console.error('[Reconciler] Missing DOM containers');
         return;
     }
 
-    let allResults: ScenarioResult[] = [];
+    // ── Benchmark Use Cases ─────────────────────────────────────────────────
 
-    // ── Benchmark Arena ─────────────────────────────────────────────────────
-    document.querySelectorAll('[data-bench]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const scenario = (btn as HTMLElement).dataset.bench!;
+    function runSingleCase(useCase: UseCase) {
+        const resultEl = document.getElementById(`result-${useCase.name}`);
+        if (!resultEl) return;
 
-            if (scenario === 'all') {
-                allResults = [];
-                render(<span style={{ color: 'var(--color-accent)' }}>⏳ Running all scenarios...</span>, benchResults);
+        render(<span style={{ color: 'var(--color-accent)' }}>⏳ Running...</span>, resultEl);
 
-                const keys = Object.keys(SCENARIOS);
-                let i = 0;
+        // Defer to let UI update
+        setTimeout(() => {
+            const result = runUseCase(useCase, workspace!);
+            render(<ResultCard result={result} />, resultEl);
+        }, 16);
+    }
 
-                function runNext() {
-                    if (i >= keys.length) {
-                        render(<BenchmarkResults scenarios={allResults} />, benchResults);
-                        return;
-                    }
-                    const result = runBenchmark(keys[i], benchWorkspace);
-                    allResults.push(result);
-                    render(<BenchmarkResults scenarios={allResults} />, benchResults);
-                    i++;
-                    setTimeout(runNext, 16);
-                }
-                runNext();
-            } else {
-                const result = runBenchmark(scenario, benchWorkspace);
-                const idx = allResults.findIndex(r => r.name === result.name);
-                if (idx >= 0) allResults[idx] = result;
-                else allResults.push(result);
-                render(<BenchmarkResults scenarios={allResults} />, benchResults);
+    // Run All button
+    let running = false;
+    runAllBtn.addEventListener('click', () => {
+        if (running) return;
+        running = true;
+        runAllBtn.classList.add('disabled');
+        if (runAllStatus) runAllStatus.textContent = '⏳ Running 4 use cases...';
+
+        let i = 0;
+        function runNext() {
+            if (i >= USE_CASES.length) {
+                running = false;
+                runAllBtn.classList.remove('disabled');
+                if (runAllStatus) runAllStatus.textContent = '✅ All done';
+                return;
             }
+
+            const uc = USE_CASES[i];
+            const resultEl = document.getElementById(`result-${uc.name}`);
+            if (resultEl) {
+                render(<span style={{ color: 'var(--color-accent)' }}>⏳ Running {uc.name}...</span>, resultEl);
+            }
+            if (runAllStatus) runAllStatus.textContent = `⏳ ${i + 1}/${USE_CASES.length}: ${uc.name}...`;
+
+            setTimeout(() => {
+                const result = runUseCase(uc, workspace!);
+                if (resultEl) render(<ResultCard result={result} />, resultEl);
+                i++;
+                setTimeout(runNext, 16);
+            }, 16);
+        }
+        runNext();
+    });
+
+    // Individual card click-to-run
+    USE_CASES.forEach(uc => {
+        const card = document.getElementById(`case-${uc.name}`);
+        card?.querySelector('.demo-card-title')?.addEventListener('click', () => {
+            if (!running) runSingleCase(uc);
         });
     });
 
@@ -217,7 +317,7 @@ export default function mount() {
 
     renderPlayground();
 
-    // Strategy selector (event delegation)
+    // Strategy selector
     document.getElementById('strategy-selector')?.addEventListener('click', (e) => {
         const btn = (e.target as HTMLElement).closest('[data-strategy]');
         if (!btn) return;
@@ -250,6 +350,5 @@ export default function mount() {
     return () => {
         playgroundList.innerHTML = '';
         playgroundStats.innerHTML = '';
-        benchResults.innerHTML = '';
     };
 }

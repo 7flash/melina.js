@@ -7,95 +7,87 @@ export default function ReconcilerPage() {
                     <span className="badge badge-client">Client Mount</span>
                 </div>
                 <p className="page-description">
-                    Melina ships four reconciler strategies — each trades speed, correctness, and DOM
-                    preservation differently. Switch strategies in real-time and run benchmarks
-                    to see the difference.
+                    Melina's <code className="code-inline">render()</code> supports four reconciler strategies.
+                    Each one dominates a specific workload. Click <strong>Run All</strong> to
+                    benchmark every use case — each strategy wins where it matters.
                 </p>
             </div>
 
-            {/* ── Strategy cards ──────────────────────────────────────── */}
-            <div className="strategy-overview" style={{ marginBottom: '20px' }}>
-                <div className="strategy-info-card">
-                    <div style={{ fontWeight: 600, marginBottom: '6px' }}>🔄 Replace</div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--color-muted)', marginBottom: '8px' }}>
-                        Nuke &amp; rebuild — drops all children, mounts from scratch. Zero diffing overhead.
-                    </div>
-                    <div>
-                        <span className="badge" style={{ background: 'rgba(34,197,94,0.15)', color: 'var(--color-success)', borderColor: 'rgba(34,197,94,0.25)' }}>O(1) diff</span>
-                        <span className="badge" style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--color-danger)', borderColor: 'rgba(239,68,68,0.25)', marginLeft: '4px' }}>Loses DOM state</span>
-                    </div>
-                </div>
-
-                <div className="strategy-info-card">
-                    <div style={{ fontWeight: 600, marginBottom: '6px' }}>📋 Sequential</div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--color-muted)', marginBottom: '8px' }}>
-                        Index-based patching — compares children by position. Fast for stable lists.
-                    </div>
-                    <div>
-                        <span className="badge" style={{ background: 'rgba(34,197,94,0.15)', color: 'var(--color-success)', borderColor: 'rgba(34,197,94,0.25)' }}>O(n) linear</span>
-                        <span className="badge" style={{ background: 'rgba(234,179,8,0.15)', color: 'var(--color-warning)', borderColor: 'rgba(234,179,8,0.25)', marginLeft: '4px' }}>No reorder</span>
-                    </div>
-                </div>
-
-                <div className="strategy-info-card">
-                    <div style={{ fontWeight: 600, marginBottom: '6px' }}>🔑 Keyed</div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--color-muted)', marginBottom: '8px' }}>
-                        Key-to-fiber map + LIS — moves nodes instead of re-creating them.
-                    </div>
-                    <div>
-                        <span className="badge" style={{ background: 'rgba(234,179,8,0.15)', color: 'var(--color-warning)', borderColor: 'rgba(234,179,8,0.25)' }}>O(n log n)</span>
-                        <span className="badge" style={{ background: 'rgba(34,197,94,0.15)', color: 'var(--color-success)', borderColor: 'rgba(34,197,94,0.25)', marginLeft: '4px' }}>Preserves state</span>
-                    </div>
-                </div>
-
-                <div className="strategy-info-card">
-                    <div style={{ fontWeight: 600, marginBottom: '6px' }}>🤖 Auto</div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--color-muted)', marginBottom: '8px' }}>
-                        Inspects children for keys — keyed when keys exist, sequential otherwise.
-                    </div>
-                    <div>
-                        <span className="badge" style={{ background: 'rgba(99,102,241,0.15)', color: 'var(--color-accent)', borderColor: 'rgba(99,102,241,0.25)' }}>Adaptive</span>
-                    </div>
-                </div>
+            {/* ── Run All Button ──────────────────────────────────────── */}
+            <div style={{ marginBottom: '20px' }}>
+                <button className="btn btn-accent" id="run-all-btn">▶ Run All Use Cases</button>
+                <span id="run-all-status" style={{ marginLeft: '12px', fontSize: '0.8rem', color: 'var(--color-muted)' }}></span>
             </div>
 
-            {/* ── Benchmark Arena ─────────────────────────────────────── */}
-            <div className="demo-card">
-                <h3 className="demo-card-title">🏁 Benchmark Arena</h3>
+            {/* ── Use Case 1: Replace ──────────────────────────────────── */}
+            <div className="demo-card" id="case-replace">
+                <h3 className="demo-card-title">
+                    🔄 Replace — Full View Swap
+                    <span className="badge" style={{ background: 'rgba(34,197,94,0.15)', color: 'var(--color-success)', borderColor: 'rgba(34,197,94,0.25)', marginLeft: '8px', fontSize: '0.65rem' }}>O(1)</span>
+                </h3>
                 <p className="demo-card-description">
-                    Run real DOM operations through each strategy. Each scenario is executed 5 times
-                    and averaged. Measures actual <code className="code-inline">render()</code> time
-                    (diff + patch).
+                    <strong>Use case:</strong> Tab switch, page navigation, loading completely new content.
+                    Replace nukes the old tree and mounts fresh — zero diffing overhead.
+                    When the new content shares nothing with the old, diffing is wasted work.
                 </p>
-
-                <div className="btn-group" style={{ marginBottom: '16px' }}>
-                    <button className="btn btn-accent" data-bench="all" id="bench-run-all">▶ Run All</button>
-                    <button className="btn" data-bench="shuffle">🔀 Shuffle</button>
-                    <button className="btn" data-bench="reverse">🔃 Reverse</button>
-                    <button className="btn" data-bench="prepend">⬆ Prepend</button>
-                    <button className="btn" data-bench="remove">✂ Remove Half</button>
-                    <button className="btn" data-bench="append">⬇ Append</button>
-                    <button className="btn" data-bench="update-text">📝 Update Text</button>
+                <div id="result-replace" className="result-box">
+                    <span style={{ color: 'var(--color-muted)' }}>Waiting for benchmark...</span>
                 </div>
+            </div>
 
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-muted)', marginBottom: '12px' }}>
-                    List size: <strong>500 items</strong> · Runs per scenario: <strong>5</strong>
+            {/* ── Use Case 2: Sequential ──────────────────────────────── */}
+            <div className="demo-card" id="case-sequential">
+                <h3 className="demo-card-title">
+                    📋 Sequential — Append & Text Update
+                    <span className="badge" style={{ background: 'rgba(34,197,94,0.15)', color: 'var(--color-success)', borderColor: 'rgba(34,197,94,0.25)', marginLeft: '8px', fontSize: '0.65rem' }}>O(n)</span>
+                </h3>
+                <p className="demo-card-description">
+                    <strong>Use case:</strong> Chat messages, log feeds, updating labels in-place.
+                    Sequential patches children by index — no key lookups, no map building.
+                    Fastest when items don't move, only grow or change text.
+                </p>
+                <div id="result-sequential" className="result-box">
+                    <span style={{ color: 'var(--color-muted)' }}>Waiting for benchmark...</span>
                 </div>
+            </div>
 
-                <div id="bench-results" className="result-box">
-                    <span style={{ color: 'var(--color-muted)' }}>Click a scenario or "Run All" to start.</span>
+            {/* ── Use Case 3: Keyed ──────────────────────────────────── */}
+            <div className="demo-card" id="case-keyed">
+                <h3 className="demo-card-title">
+                    🔑 Keyed — Sort & Reorder
+                    <span className="badge" style={{ background: 'rgba(234,179,8,0.15)', color: 'var(--color-warning)', borderColor: 'rgba(234,179,8,0.25)', marginLeft: '8px', fontSize: '0.65rem' }}>O(n log n)</span>
+                </h3>
+                <p className="demo-card-description">
+                    <strong>Use case:</strong> Table sorting, drag-and-drop, filtering a list.
+                    Keyed builds a key→fiber map and uses LIS to move DOM nodes
+                    instead of re-creating them — preserving focus, animations, and input state.
+                </p>
+                <div id="result-keyed" className="result-box">
+                    <span style={{ color: 'var(--color-muted)' }}>Waiting for benchmark...</span>
                 </div>
+            </div>
 
-                {/* Hidden workspace for benchmark DOM operations */}
-                <div id="bench-workspace" style={{ position: 'absolute', left: '-9999px', top: 0 }}></div>
+            {/* ── Use Case 4: Auto ────────────────────────────────────── */}
+            <div className="demo-card" id="case-auto">
+                <h3 className="demo-card-title">
+                    🤖 Auto — Smart Default
+                    <span className="badge" style={{ background: 'rgba(99,102,241,0.15)', color: 'var(--color-accent)', borderColor: 'rgba(99,102,241,0.25)', marginLeft: '8px', fontSize: '0.65rem' }}>Adaptive</span>
+                </h3>
+                <p className="demo-card-description">
+                    <strong>Use case:</strong> General-purpose rendering when you don't know the workload.
+                    Auto inspects children at each diff — uses keyed when keys exist,
+                    sequential otherwise. Never the fastest, but never the wrong choice.
+                </p>
+                <div id="result-auto" className="result-box">
+                    <span style={{ color: 'var(--color-muted)' }}>Waiting for benchmark...</span>
+                </div>
             </div>
 
             {/* ── Live Playground ─────────────────────────────────────── */}
             <div className="demo-card">
                 <h3 className="demo-card-title">🔬 Live Playground</h3>
                 <p className="demo-card-description">
-                    Switch strategies and manipulate the list in real-time.
-                    Watch for focus loss, animation resets, or glitches when switching strategies.
+                    Manipulate a list in real-time with different strategies. Watch render times change.
                 </p>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
@@ -127,21 +119,18 @@ export default function ReconcilerPage() {
                 }}></div>
             </div>
 
-            {/* ── How It Works ────────────────────────────────────────── */}
+            {/* Hidden benchmark workspace */}
+            <div id="bench-workspace" style={{ position: 'absolute', left: '-9999px', top: 0 }}></div>
+
+            {/* ── API Reference ────────────────────────────────────────── */}
             <div className="demo-card">
-                <h3 className="demo-card-title">📝 How It Works</h3>
-                <div className="code-block">{`// Per-render reconciler override
-import { render } from 'melina/client';
+                <h3 className="demo-card-title">📝 API</h3>
+                <div className="code-block">{`// Per-render override (recommended):
+render(<List items={data} />, el, { reconciler: 'keyed' });
 
-// Override for a single render call:
-render(<MyList items={data} />, el, {
-    reconciler: 'keyed'     // 'replace' | 'sequential' | 'keyed' | 'auto'
-});
-
-// Or set the global default:
-import { setReconciler } from 'melina/client';
-setReconciler('keyed');     // all future render() calls use keyed
-render(<MyList items={data} />, el);  // uses keyed`}</div>
+// Global default:
+setReconciler('keyed');
+render(<List items={data} />, el);  // uses keyed`}</div>
             </div>
         </div>
     );
