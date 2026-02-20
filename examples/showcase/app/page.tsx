@@ -19,7 +19,13 @@ export default function HomePage() {
                 <a href="/counter" data-link className="feature-card">
                     <div className="feature-card-icon">🔢</div>
                     <h3 className="feature-card-title">Client Interactivity</h3>
-                    <p className="feature-card-desc">XState machines drive render() calls for reactive UIs without React on the client.</p>
+                    <p className="feature-card-desc">Vanilla counter using render() — no framework, just VDOM diffing and DOM patches.</p>
+                </a>
+
+                <a href="/xstate" data-link className="feature-card">
+                    <div className="feature-card-icon">🚦</div>
+                    <h3 className="feature-card-title">XState Integration</h3>
+                    <p className="feature-card-desc">Finite state machines driving UI updates — traffic light FSM and actor-based counter.</p>
                 </a>
 
                 <a href="/reconciler" data-link className="feature-card">

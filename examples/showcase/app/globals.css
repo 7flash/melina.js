@@ -550,36 +550,8 @@ body {
     transition: width 0.3s ease;
 }
 
-/* ─── View Transitions ─────────────────────────────────── */
+/* ─── Content Transition (sidebar excluded) ────────────── */
 
-@view-transition {
-    navigation: auto;
-}
-
-::view-transition-old(root) {
-    animation: 200ms ease-out fade-out;
-}
-
-::view-transition-new(root) {
-    animation: 200ms ease-in fade-in;
-}
-
-@keyframes fade-out {
-    from {
-        opacity: 1;
-    }
-
-    to {
-        opacity: 0;
-    }
-}
-
-@keyframes fade-in {
-    from {
-        opacity: 0;
-    }
-
-    to {
-        opacity: 1;
-    }
+.main-content {
+    transition: opacity 150ms ease;
 }

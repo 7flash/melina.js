@@ -2,6 +2,7 @@ const navItems = [
     { href: '/', icon: '🏠', label: 'Home' },
     { href: '/ssr', icon: '🖥️', label: 'SSR Demo', section: 'Features' },
     { href: '/counter', icon: '🔢', label: 'Counter' },
+    { href: '/xstate', icon: '🚦', label: 'XState' },
     { href: '/reconciler', icon: '⚙️', label: 'Reconciler' },
     { href: '/items/alpha', icon: '🔗', label: 'Dynamic Routes' },
     { href: '/streaming', icon: '📡', label: 'Streaming', section: 'Advanced' },

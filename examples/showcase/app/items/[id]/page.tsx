@@ -28,68 +28,109 @@ export default function DynamicPage({ params }: { params: { id: string } }) {
                     <span className="badge badge-server">Server SSR</span>
                 </div>
                 <p className="page-description">
-                    This page uses file-based <code className="code-inline">[id]</code> parameter routing.
-                    The URL segment is available as <code className="code-inline">params.id</code> in the component.
+                    Melina.js uses <strong>file-based routing</strong>. The directory structure inside <code className="code-inline">app/</code> maps
+                    directly to URL paths. Dynamic segments are defined by wrapping a folder name in square brackets.
                 </p>
+            </div>
+
+            <div className="demo-card">
+                <h3 className="demo-card-title">📂 How File-Based Routing Works</h3>
+                <p className="demo-card-description">
+                    Every <code className="code-inline">page.tsx</code> in the <code className="code-inline">app/</code> directory becomes a route.
+                    Folders create URL segments. Folders named <code className="code-inline">[param]</code> match any value.
+                </p>
+                <div className="code-block">{`app/
+├── page.tsx                 →  /
+├── ssr/page.tsx              →  /ssr
+├── counter/page.tsx          →  /counter
+├── items/
+│   └── [id]/                 ← dynamic segment
+│       └── page.tsx          →  /items/:id  (matches any id)
+└── api/
+    ├── data/route.ts         →  /api/data   (API route)
+    └── stream/route.ts       →  /api/stream (API route)
+
+Routes are discovered automatically at startup.
+No manual configuration, no router setup.`}</div>
             </div>
 
             <div className="demo-card">
                 <h3 className="demo-card-title">🔗 Current Route</h3>
                 <div className="result-box">
                     <div className="stat-row">
-                        <span className="stat-label">URL Pattern</span>
+                        <span className="stat-label">File on disk</span>
+                        <span className="stat-value" style={{ fontSize: '0.75rem' }}>app/items/[id]/page.tsx</span>
+                    </div>
+                    <div className="stat-row">
+                        <span className="stat-label">URL pattern</span>
                         <span className="stat-value">/items/:id</span>
                     </div>
                     <div className="stat-row">
                         <span className="stat-label">params.id</span>
                         <span className="stat-value" style={{ color: item?.color || 'var(--color-danger)' }}>{id}</span>
                     </div>
-                    <div className="stat-row">
-                        <span className="stat-label">File Path</span>
-                        <span className="stat-value" style={{ fontSize: '0.75rem' }}>app/items/[id]/page.tsx</span>
-                    </div>
                 </div>
             </div>
 
             {item ? (
-                <div className="demo-card">
-                    <h3 className="demo-card-title" style={{ color: item.color }}>
+                <div className="demo-card" style={{ borderColor: item.color + '33' }}>
+                    <h3 className="demo-card-title">
                         <span style={{ color: item.color }}>●</span> {item.title}
                     </h3>
-                    <p className="demo-card-description">{item.description}</p>
+                    <p className="demo-card-description" style={{ marginBottom: 0 }}>{item.description}</p>
                 </div>
             ) : (
-                <div className="demo-card">
+                <div className="demo-card" style={{ borderColor: 'var(--color-danger)' }}>
                     <h3 className="demo-card-title" style={{ color: 'var(--color-danger)' }}>
                         ⚠️ Unknown ID: "{id}"
                     </h3>
-                    <p className="demo-card-description">
-                        Try navigating to one of the known items below.
+                    <p className="demo-card-description" style={{ marginBottom: 0 }}>
+                        No data found for this ID. This is how you'd handle 404s or missing resources in a dynamic route.
+                        Try one of the known items below.
                     </p>
                 </div>
             )}
 
             <div className="demo-card">
                 <h3 className="demo-card-title">📍 Navigate Between Items</h3>
+                <p className="demo-card-description">
+                    Each link below navigates to the same <code className="code-inline">[id]/page.tsx</code> template with a different <code className="code-inline">params.id</code> value.
+                </p>
                 <div className="btn-group">
                     {Object.entries(items).map(([key, val]) => (
-                        <a key={key} href={`/items/${key}`} data-link className="btn" style={{ borderColor: val.color, color: key === id ? 'white' : val.color, background: key === id ? val.color : 'transparent' }}>
-                            {key}
+                        <a key={key} href={`/items/${key}`} data-link className="btn" style={{
+                            borderColor: val.color,
+                            color: key === id ? 'white' : val.color,
+                            background: key === id ? val.color : 'transparent'
+                        }}>
+                            /items/{key}
                         </a>
                     ))}
-                    <a href="/items/unknown" data-link className="btn">unknown (404 test)</a>
+                    <a href="/items/unknown" data-link className="btn" style={{ borderColor: 'var(--color-danger)', color: 'var(--color-danger)' }}>
+                        /items/unknown
+                    </a>
                 </div>
             </div>
 
             <div className="demo-card">
-                <h3 className="demo-card-title">📝 How It Works</h3>
-                <div className="code-block">{`// File structure:
-// app/items/[id]/page.tsx  →  matches /items/:id
+                <h3 className="demo-card-title">📝 Component Code</h3>
+                <div className="code-block">{`// app/items/[id]/page.tsx
 
+// The component receives \`params\` with the matched URL segments
 export default function DynamicPage({ params }) {
-    const id = params.id;  // "alpha", "bravo", etc.
+    const id = params.id;  // "alpha", "bravo", "charlie", etc.
+
+    // Look up data from any source — database, API, in-memory
     const item = items[id];
-    return <div>{item.title}: {item.description}</div>;
+
+    if (!item) return <div>Not found: {id}</div>;
+
+    return (
+        <div>
+            <h1>{item.title}</h1>
+            <p>{item.description}</p>
+        </div>
+    );
 }`}</div>
             </div>
         </div>

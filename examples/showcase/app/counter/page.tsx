@@ -7,16 +7,17 @@ export default function CounterPage() {
                     <span className="badge badge-client">Client Mount</span>
                 </div>
                 <p className="page-description">
-                    XState state machines drive <code className="code-inline">render()</code> calls.
-                    The counter below is entirely client-side — the server only provides the container.
+                    The server renders this container with a placeholder. A client mount script
+                    (<code className="code-inline">page.client.tsx</code>) runs after hydration and takes over
+                    the <code className="code-inline">#counter-root</code> element using Melina's <code className="code-inline">render()</code> API.
                 </p>
             </div>
 
             <div className="demo-card">
-                <h3 className="demo-card-title">🔢 XState Counter</h3>
+                <h3 className="demo-card-title">🔢 Counter</h3>
                 <p className="demo-card-description">
-                    A state machine manages count. On each transition, <code className="code-inline">render()</code> diffs
-                    the VDOM and patches only changed DOM nodes.
+                    A vanilla counter using <code className="code-inline">render()</code> — no framework, no state library.
+                    Each click calls <code className="code-inline">render(vnode, el)</code> which diffs the VDOM and patches only changed nodes.
                 </p>
                 <div id="counter-root" className="result-box" style={{ textAlign: 'center', padding: '32px' }}>
                     <span style={{ color: 'var(--color-muted)' }}>Loading client script...</span>
@@ -27,6 +28,7 @@ export default function CounterPage() {
                 <h3 className="demo-card-title">⏱️ Lifecycle</h3>
                 <p className="demo-card-description">
                     Mount scripts export a default function that returns a cleanup function.
+                    Navigate away and back to observe the mount/cleanup cycle.
                 </p>
                 <div id="lifecycle-root" className="result-box">
                     <span style={{ color: 'var(--color-muted)' }}>Waiting for mount...</span>
@@ -35,26 +37,28 @@ export default function CounterPage() {
 
             <div className="demo-card">
                 <h3 className="demo-card-title">📝 How It Works</h3>
-                <div className="code-block">{`// page.client.tsx
+                <div className="code-block">{`// app/counter/page.client.tsx
 import { render } from 'melina/client';
-import { createMachine, createActor, assign } from 'xstate';
 
-const machine = createMachine({
-    context: { count: 0 },
-    on: {
-        INC: { actions: assign({ count: ({ context }) => context.count + 1 }) },
-        DEC: { actions: assign({ count: ({ context }) => context.count - 1 }) },
-        RESET: { actions: assign({ count: 0 }) },
-    }
-});
+let count = 0;
+
+function Counter() {
+    return (
+        <div>
+            <div style={{ fontSize: '3rem' }}>{count}</div>
+            <button onclick={() => { count--; update(); }}>- 1</button>
+            <button onclick={() => { count++; update(); }}>+ 1</button>
+            <button onclick={() => { count = 0; update(); }}>Reset</button>
+        </div>
+    );
+}
+
+function update() { render(<Counter />, root); }
 
 export default function mount() {
-    const actor = createActor(machine);
-    actor.subscribe(snap => {
-        render(<Counter count={snap.context.count} send={actor.send} />, root);
-    });
-    actor.start();
-    return () => actor.stop();  // cleanup on navigate away
+    const root = document.getElementById('counter-root');
+    update();
+    return () => { render(null, root); };  // cleanup
 }`}</div>
             </div>
         </div>
