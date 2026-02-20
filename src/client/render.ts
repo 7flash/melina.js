@@ -485,7 +485,7 @@ function getNextSibling(fiber: Fiber, parentNode: Node): Node | null {
 /** The selector for the page content container that gets swapped on navigation. */
 const PAGE_CONTENT_SELECTOR = '#melina-page-content';
 
-export async function navigate(href: string): Promise<void> {
+export async function navigate(href: string, _skipPushState = false): Promise<void> {
     if (typeof window === 'undefined') return;
     try {
         // Cleanup previous page-level scripts
@@ -501,8 +501,22 @@ export async function navigate(href: string): Promise<void> {
         const html = await response.text();
         const newDoc = new DOMParser().parseFromString(html, 'text/html');
 
-        window.history.pushState({}, '', href);
+        if (!_skipPushState) {
+            window.history.pushState({}, '', href);
+        }
         document.title = newDoc.title;
+
+        // Update active nav link in sidebar
+        const navPath = new URL(href, window.location.origin).pathname;
+        document.querySelectorAll('.nav-link').forEach(link => {
+            const linkHref = (link as HTMLAnchorElement).getAttribute('data-nav-href')
+                || (link as HTMLAnchorElement).getAttribute('href');
+            if (linkHref === navPath) {
+                link.classList.add('active');
+            } else {
+                link.classList.remove('active');
+            }
+        });
 
         // Update stylesheet if changed
         const newStyleLink = newDoc.querySelector('link[rel="stylesheet"]') as HTMLLinkElement | null;
@@ -570,6 +584,13 @@ export async function navigate(href: string): Promise<void> {
     } catch (e) {
         window.location.href = href;
     }
+}
+
+// ─── Popstate: Handle browser back/forward ─────────────────────────────────────
+if (typeof window !== 'undefined') {
+    window.addEventListener('popstate', () => {
+        navigate(window.location.href, true);
+    });
 }
 
 export interface LinkProps extends Props { href: string; }
