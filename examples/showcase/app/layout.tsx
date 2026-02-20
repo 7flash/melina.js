@@ -6,7 +6,7 @@ const navItems = [
     { href: '/reconciler', icon: '⚙️', label: 'Reconciler Strategies' },
     { href: '/items/alpha', icon: '🔗', label: 'Dynamic Routes' },
     { href: '/streaming', icon: '📡', label: 'Streaming', section: 'Advanced' },
-    { href: '/stress', icon: '🔥', label: 'Backend Stress' },
+    { href: '/stress', icon: '🔥', label: 'Server Throughput' },
 ];
 
 export default function RootLayout({ children }: { children: any }) {

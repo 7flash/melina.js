@@ -3,13 +3,14 @@ export default function StressTestPage() {
         <div className="page">
             <div className="page-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-                    <h1 className="page-title">Backend Stress Test</h1>
+                    <h1 className="page-title">Server Throughput</h1>
                     <span className="badge badge-client">Client Mount</span>
                     <span className="badge badge-server">Server Hit</span>
                 </div>
                 <p className="page-description">
-                    Hammer the Melina server with concurrent requests to test SSR throughput,
-                    API response times, and build pipeline stability under load.
+                    Fire real HTTP requests at the Melina server from your browser.
+                    Measures SSR render time, API response latency, and how the server
+                    handles concurrent load.
                 </p>
             </div>
 
@@ -55,23 +56,15 @@ export default function StressTestPage() {
             </div>
 
             <div className="demo-card">
-                <h3 className="demo-card-title">📝 What This Tests</h3>
-                <div className="code-block">{`Backend Stress Test Scenarios:
+                <h3 className="demo-card-title">📝 Test Modes</h3>
+                <div className="code-block">{`⚡ Burst     — fires all N requests at once (Promise.all)
+               tests: concurrency limits, race conditions
 
-Burst Mode:
-  • Sends N requests simultaneously via Promise.all
-  • Tests: server concurrency, build serializer, memory pressure
-  • Best for: finding race conditions and resource limits
+📐 Sequential — sends one request at a time, waits for response
+               tests: per-request latency, baseline throughput
 
-Sequential Mode:
-  • Sends requests one after another
-  • Tests: baseline latency, cache warm-up, steady throughput
-  • Best for: measuring per-request overhead
-
-Ramp Up Mode:
-  • Gradually increases concurrency from 1 to N over 3 seconds
-  • Tests: how the server degrades under increasing load
-  • Best for: finding the breaking point`}</div>
+📈 Ramp Up   — increases concurrency from 1→N over 3 seconds
+               tests: degradation curve under increasing load`}</div>
             </div>
         </div>
     );

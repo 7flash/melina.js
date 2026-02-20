@@ -268,7 +268,7 @@ export default function mount() {
         function runNext() {
             if (i >= USE_CASES.length) {
                 running = false;
-                runAllBtn.classList.remove('disabled');
+                runAllBtn!.classList.remove('disabled');
                 if (runAllStatus) runAllStatus.textContent = '✅ All done';
                 return;
             }
@@ -307,11 +307,11 @@ export default function mount() {
 
     function renderPlayground() {
         const start = performance.now();
-        render(<ItemList items={items} />, playgroundList, { reconciler: currentStrategy });
+        render(<ItemList items={items} />, playgroundList!, { reconciler: currentStrategy });
         lastRenderTime = performance.now() - start;
         render(
             <PlaygroundStats strategy={currentStrategy} itemCount={items.length} lastOp={lastOp} renderTime={lastRenderTime} />,
-            playgroundStats
+            playgroundStats!
         );
     }
 
