@@ -3,10 +3,10 @@ const navItems = [
     { href: '/ssr', icon: '🖥️', label: 'SSR Demo', section: 'Features' },
     { href: '/counter', icon: '🔢', label: 'Counter' },
     { href: '/xstate', icon: '🚦', label: 'XState' },
-    { href: '/reconciler', icon: '⚙️', label: 'Reconciler' },
+    { href: '/reconciler', icon: '⚙️', label: 'Reconciler Strategies' },
     { href: '/items/alpha', icon: '🔗', label: 'Dynamic Routes' },
     { href: '/streaming', icon: '📡', label: 'Streaming', section: 'Advanced' },
-    { href: '/stress', icon: '🔥', label: 'Stress Test' },
+    { href: '/stress', icon: '🔥', label: 'Backend Stress' },
 ];
 
 export default function RootLayout({ children }: { children: any }) {

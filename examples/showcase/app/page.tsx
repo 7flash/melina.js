@@ -30,8 +30,8 @@ export default function HomePage() {
 
                 <a href="/reconciler" className="feature-card">
                     <div className="feature-card-icon">⚙️</div>
-                    <h3 className="feature-card-title">Reconciler Playground</h3>
-                    <p className="feature-card-desc">Compare keyed, sequential, and auto diffing strategies in real-time.</p>
+                    <h3 className="feature-card-title">Reconciler Strategies</h3>
+                    <p className="feature-card-desc">Benchmark keyed vs sequential vs auto diffing — see where each strategy wins.</p>
                 </a>
 
                 <a href="/items/alpha" className="feature-card">
@@ -48,8 +48,8 @@ export default function HomePage() {
 
                 <a href="/stress" className="feature-card">
                     <div className="feature-card-icon">🔥</div>
-                    <h3 className="feature-card-title">Stress Test</h3>
-                    <p className="feature-card-desc">Render and reconcile 1000+ items with performance timing.</p>
+                    <h3 className="feature-card-title">Backend Stress Test</h3>
+                    <p className="feature-card-desc">Hammer the server with burst, sequential, and ramp-up requests to test throughput.</p>
                 </a>
             </div>
 

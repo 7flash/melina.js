@@ -423,6 +423,21 @@ body {
     background: var(--color-accent-dim);
 }
 
+/* ─── Strategy Overview Cards ─────────────────────────── */
+
+.strategy-overview {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+}
+
+.strategy-info-card {
+    padding: 14px;
+    background: var(--color-surface-2);
+    border-radius: 10px;
+    border: 1px solid var(--color-border);
+}
+
 /* ─── Strategy Selector ────────────────────────────────── */
 
 .strategy-selector {
