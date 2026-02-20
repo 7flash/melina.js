@@ -376,12 +376,15 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
             });
         } catch (error: any) {
             console.error('Error rendering page:', error);
+            const errorMessage = error?.message || String(error);
+            const errorStack = error?.stack || 'No stack trace available';
             return new Response(`
         <!DOCTYPE html>
         <html>
           <body>
             <h1>500 - Internal Server Error</h1>
-            <pre>${isDev ? error.stack : 'An error occurred'}</pre>
+            <pre>${isDev ? errorStack : 'An error occurred'}</pre>
+            <p>Error: ${errorMessage}</p>
           </body>
         </html>
       `, {

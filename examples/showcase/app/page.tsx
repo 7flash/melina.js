@@ -1,0 +1,63 @@
+export default function HomePage() {
+    return (
+        <div className="page">
+            <div className="page-header">
+                <h1 className="page-title">Welcome to Melina.js</h1>
+                <p className="page-description">
+                    A Bun-native web framework with file-based routing, server-side rendering,
+                    and a lightweight client VDOM runtime. Each page below demonstrates a specific feature.
+                </p>
+            </div>
+
+            <div className="feature-grid">
+                <a href="/ssr" data-link className="feature-card">
+                    <div className="feature-card-icon">🖥️</div>
+                    <h3 className="feature-card-title">Server-Side Rendering</h3>
+                    <p className="feature-card-desc">Pages render on the server with full access to the runtime, file system, and environment.</p>
+                </a>
+
+                <a href="/counter" data-link className="feature-card">
+                    <div className="feature-card-icon">🔢</div>
+                    <h3 className="feature-card-title">Client Interactivity</h3>
+                    <p className="feature-card-desc">XState machines drive render() calls for reactive UIs without React on the client.</p>
+                </a>
+
+                <a href="/reconciler" data-link className="feature-card">
+                    <div className="feature-card-icon">⚙️</div>
+                    <h3 className="feature-card-title">Reconciler Playground</h3>
+                    <p className="feature-card-desc">Compare keyed, sequential, and auto diffing strategies in real-time.</p>
+                </a>
+
+                <a href="/items/alpha" data-link className="feature-card">
+                    <div className="feature-card-icon">🔗</div>
+                    <h3 className="feature-card-title">Dynamic Routes</h3>
+                    <p className="feature-card-desc">File-based [id] parameter routing with server-side data access.</p>
+                </a>
+
+                <a href="/streaming" data-link className="feature-card">
+                    <div className="feature-card-icon">📡</div>
+                    <h3 className="feature-card-title">SSE Streaming</h3>
+                    <p className="feature-card-desc">Server-Sent Events with live DOM updates via EventSource.</p>
+                </a>
+
+                <a href="/stress" data-link className="feature-card">
+                    <div className="feature-card-icon">🔥</div>
+                    <h3 className="feature-card-title">Stress Test</h3>
+                    <p className="feature-card-desc">Render and reconcile 1000+ items with performance timing.</p>
+                </a>
+            </div>
+
+            <div className="demo-card" style={{ marginTop: '32px' }}>
+                <h3 className="demo-card-title">Architecture</h3>
+                <p className="demo-card-description">
+                    Melina uses a <strong>Single Root SSR + Vanilla Lifecycle</strong> model. Pages render on the server
+                    as JSX → HTML. Client interactivity is added via mount scripts (<code>page.client.tsx</code>) that
+                    use a ~2KB VDOM runtime with pluggable reconcilers.
+                </p>
+                <div className="code-block">{`Server:  page.tsx      → renderToString() → HTML response
+Client:  page.client.tsx → mount()         → render(vnode, el)
+Layout:  layout.client.tsx                 → persistent across navigations`}</div>
+            </div>
+        </div>
+    );
+}
