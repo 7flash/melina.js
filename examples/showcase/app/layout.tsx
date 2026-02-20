@@ -46,7 +46,10 @@ export default function RootLayout({ children }: { children: any }) {
                         </nav>
 
                         <div style={{ padding: '16px 20px', borderTop: '1px solid var(--color-border)', fontSize: '0.7rem', color: 'var(--color-muted)' }}>
-                            v2.2.1 · Bun {typeof Bun !== 'undefined' ? Bun.version : '?'}
+                            <div>v2.2.1 · Bun {typeof Bun !== 'undefined' ? Bun.version : '?'}</div>
+                            <div style={{ marginTop: '4px', fontFamily: 'var(--font-mono)', opacity: 0.6 }} id="ssr-timestamp">
+                                SSR: {new Date().toLocaleTimeString()}
+                            </div>
                         </div>
                     </aside>
 

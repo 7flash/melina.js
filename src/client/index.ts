@@ -29,6 +29,7 @@ export type { Fiber, LinkProps } from './render';
 // Reconciler strategies (for advanced usage)
 export { sequentialReconciler } from './reconcilers/sequential';
 export { keyedReconciler } from './reconcilers/keyed';
+export { replaceReconciler } from './reconcilers/replace';
 export type { Reconciler, ReconcilerContext, ReconcilerName } from './reconcilers/types';
 
 export default {};

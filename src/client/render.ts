@@ -20,6 +20,7 @@ import { Fragment, type VNode, type Child, type Component, type Props } from './
 import type { Reconciler, ReconcilerContext, ReconcilerName } from './reconcilers/types';
 import { sequentialReconciler } from './reconcilers/sequential';
 import { keyedReconciler } from './reconcilers/keyed';
+import { replaceReconciler } from './reconcilers/replace';
 
 // ─── Fiber: Internal representation of a mounted VNode ─────────────────────────
 
@@ -142,6 +143,10 @@ function diffChildren(
     }
     if (activeReconciler === 'sequential') {
         sequentialReconciler(parentFiber, parentNode, oldFibers, flatNew, reconcilerCtx);
+        return;
+    }
+    if (activeReconciler === 'replace') {
+        replaceReconciler(parentFiber, parentNode, oldFibers, flatNew, reconcilerCtx);
         return;
     }
 
@@ -567,8 +572,13 @@ export const jsxs = jsx;
 export const jsxDEV = jsx;
 
 // ─── Auto-init for link interception ───────────────────────────────────────────
+// Guard: melina/client may be bundled into multiple scripts (layout + page).
+// Without this guard, each bundle registers its own click interceptor,
+// causing duplicate fetches on every navigation.
 
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && !(window as any).__melinaNavInit__) {
+    (window as any).__melinaNavInit__ = true;
+
     document.addEventListener('click', (e) => {
         const link = (e.target as Element).closest('a[href]') as HTMLAnchorElement;
         if (!link || link.target || !link.href.startsWith(window.location.origin)) return;

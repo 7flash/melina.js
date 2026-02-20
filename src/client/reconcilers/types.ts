@@ -60,4 +60,4 @@ export interface ReconcilerContext {
     collectNodes: (fiber: Fiber) => Node[];
 }
 
-export type ReconcilerName = 'auto' | 'keyed' | 'sequential';
+export type ReconcilerName = 'auto' | 'keyed' | 'sequential' | 'replace';

@@ -1,20 +1,32 @@
 import { render, setReconciler, getReconciler } from 'melina/client';
 
-// ─── Data Generation ────────────────────────────────────────────────────────────
-
-const COLORS = ['#818cf8', '#f472b6', '#34d399', '#fbbf24', '#f87171', '#60a5fa', '#a78bfa', '#fb923c'];
-const NAMES = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot', 'Golf', 'Hotel', 'India', 'Juliet', 'Kilo', 'Lima', 'Mike', 'November', 'Oscar', 'Papa'];
+// ─── Types ──────────────────────────────────────────────────────────────────────
 
 type Item = { id: number; label: string; color: string };
+
+type StrategyResult = {
+    strategy: string;
+    avgMs: number;
+};
+
+type ScenarioResult = {
+    name: string;
+    strategies: StrategyResult[];
+    winner: string;
+};
+
+// ─── Data Helpers ───────────────────────────────────────────────────────────────
+
+const COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#8b5cf6', '#14b8a6'];
 let nextId = 0;
 
-function createItem(): Item {
-    const id = nextId++;
-    return { id, label: NAMES[id % NAMES.length] + '-' + id, color: COLORS[id % COLORS.length] };
+function makeItem(): Item {
+    const id = ++nextId;
+    return { id, label: `Item ${id}`, color: COLORS[id % COLORS.length] };
 }
 
-function createItems(count: number): Item[] {
-    return Array.from({ length: count }, createItem);
+function createItems(n: number): Item[] {
+    return Array.from({ length: n }, makeItem);
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -26,238 +38,194 @@ function shuffle<T>(arr: T[]): T[] {
     return a;
 }
 
-// ─── Benchmark Engine ───────────────────────────────────────────────────────────
-
-type BenchResult = { strategy: string; time: number; color: string };
-type ScenarioResult = { name: string; icon: string; description: string; results: BenchResult[] };
-
-const STRATEGY_COLORS: Record<string, string> = {
-    sequential: '#818cf8',
-    keyed: '#f472b6',
-    auto: '#34d399',
-};
-
-const BENCH_SIZE = 500;
-const BENCH_RUNS = 3; // average over N runs
-
-function runBenchmark(
-    scenario: string,
-    root: HTMLElement,
-): ScenarioResult {
-    const strategies = ['sequential', 'keyed', 'auto'] as const;
-    const results: BenchResult[] = [];
-
-    for (const strategy of strategies) {
-        setReconciler(strategy);
-        const times: number[] = [];
-
-        for (let run = 0; run < BENCH_RUNS; run++) {
-            nextId = 0;
-            const items = createItems(BENCH_SIZE);
-
-            // Mount initial list
-            render(<ItemList items={items} />, root);
-
-            // Apply the mutation
-            let mutated: Item[];
-            switch (scenario) {
-                case 'shuffle':
-                    mutated = shuffle(items);
-                    break;
-                case 'reverse':
-                    mutated = [...items].reverse();
-                    break;
-                case 'prepend':
-                    mutated = [...createItems(50), ...items];
-                    break;
-                case 'remove-middle': {
-                    const mid = Math.floor(items.length / 2);
-                    mutated = [...items.slice(0, mid - 25), ...items.slice(mid + 25)];
-                    break;
-                }
-                case 'append':
-                    mutated = [...items, ...createItems(50)];
-                    break;
-                case 'text-update':
-                    mutated = items.map(item => ({ ...item, label: item.label + '!' }));
-                    break;
-                default:
-                    mutated = items;
-            }
-
-            // Measure the re-render
-            const start = performance.now();
-            render(<ItemList items={mutated} />, root);
-            times.push(performance.now() - start);
-        }
-
-        // Clean up
-        render(null, root);
-
-        const avg = times.reduce((a, b) => a + b, 0) / times.length;
-        results.push({ strategy, time: avg, color: STRATEGY_COLORS[strategy] });
-    }
-
-    const scenarios: Record<string, { name: string; icon: string; description: string }> = {
-        shuffle: { name: 'Shuffle All', icon: '🔀', description: 'Randomly reorder all items. Keyed wins — LIS minimizes DOM moves.' },
-        reverse: { name: 'Reverse', icon: '↕️', description: 'Reverse the entire list. Keyed preserves nodes; sequential recreates all.' },
-        prepend: { name: 'Prepend 50', icon: '⬆️', description: 'Insert 50 items at the start. Sequential shifts everything; keyed moves nothing.' },
-        'remove-middle': { name: 'Remove Middle', icon: '✂️', description: 'Remove 50 items from the center. Keyed detects deletions precisely.' },
-        append: { name: 'Append 50', icon: '➕', description: 'Add 50 items at the end. Both strategies are fast — no reorders needed.' },
-        'text-update': { name: 'Text Update', icon: '📝', description: 'Update text in every item (no structural change). Sequential wins — pure index patching.' },
-    };
-
-    const meta = scenarios[scenario] || { name: scenario, icon: '🔬', description: '' };
-    return { ...meta, results };
-}
-
 // ─── Components ─────────────────────────────────────────────────────────────────
 
 function ItemList({ items }: { items: Item[] }) {
     return (
         <div className="item-list">
             {items.map(item => (
-                <div key={item.id} className="list-item">
-                    <span className="list-item-key" style={{ color: item.color }}>#{item.id}</span>
-                    <span className="list-item-label">{item.label}</span>
+                <div key={item.id} style={{
+                    display: 'flex',
+                    gap: '8px',
+                    padding: '4px 8px',
+                    borderBottom: '1px solid rgba(255,255,255,0.03)',
+                    fontSize: '0.8rem',
+                }}>
+                    <span style={{ color: item.color, minWidth: '40px', fontFamily: 'var(--font-mono)' }}>#{item.id}</span>
+                    <span>{item.label}</span>
                 </div>
             ))}
+        </div>
+    );
+}
+
+function PlaygroundStats({ strategy, itemCount, lastOp, renderTime }: {
+    strategy: string;
+    itemCount: number;
+    lastOp: string;
+    renderTime: number;
+}) {
+    const timeColor = renderTime < 2 ? 'var(--color-success)' : renderTime < 10 ? 'var(--color-warning)' : 'var(--color-danger)';
+    return (
+        <div style={{ display: 'flex', gap: '16px', fontSize: '0.8rem', flexWrap: 'wrap' }}>
+            <div><span style={{ color: 'var(--color-muted)' }}>Strategy:</span> <strong>{strategy}</strong></div>
+            <div><span style={{ color: 'var(--color-muted)' }}>Items:</span> <strong>{itemCount}</strong></div>
+            <div><span style={{ color: 'var(--color-muted)' }}>Last op:</span> <strong>{lastOp}</strong></div>
+            <div><span style={{ color: 'var(--color-muted)' }}>Render:</span> <strong style={{ color: timeColor }}>{renderTime.toFixed(2)}ms</strong></div>
         </div>
     );
 }
 
 function BenchmarkResults({ scenarios }: { scenarios: ScenarioResult[] }) {
     if (scenarios.length === 0) {
-        return <span style={{ color: 'var(--color-muted)' }}>Click a scenario to benchmark, or "Run All" for a full comparison.</span>;
+        return <span style={{ color: 'var(--color-muted)' }}>Click a scenario or "Run All" to start.</span>;
     }
-
-    const maxTime = Math.max(...scenarios.flatMap(s => s.results.map(r => r.time)), 1);
 
     return (
         <div>
-            {scenarios.map((scenario, si) => (
-                <div key={si} style={{ marginBottom: si < scenarios.length - 1 ? '20px' : '0' }}>
-                    <div style={{ fontWeight: '600', marginBottom: '8px', fontSize: '0.85rem' }}>
-                        {scenario.icon} {scenario.name}
-                        <span style={{ fontWeight: '400', color: 'var(--color-muted)', marginLeft: '8px', fontSize: '0.75rem' }}>
-                            {scenario.description}
-                        </span>
+            {scenarios.map((scenario, si) => {
+                const maxTime = Math.max(...scenario.strategies.map(s => s.avgMs), 0.1);
+
+                return (
+                    <div key={si} style={{
+                        marginBottom: '16px',
+                        paddingBottom: '16px',
+                        borderBottom: si < scenarios.length - 1 ? '1px solid var(--color-border)' : 'none',
+                    }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '8px' }}>{scenario.name}</div>
+                        {scenario.strategies.map((s, i) => {
+                            const isWinner = s.strategy === scenario.winner;
+                            const barWidth = Math.max(2, (s.avgMs / maxTime) * 100);
+                            return (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', fontSize: '0.75rem' }}>
+                                    <span style={{ minWidth: '80px', fontFamily: 'var(--font-mono)', color: isWinner ? 'var(--color-success)' : 'var(--color-text)' }}>
+                                        {isWinner ? '🏆 ' : '   '}{s.strategy}
+                                    </span>
+                                    <div className="perf-bar" style={{ flex: 1 }}>
+                                        <div className="perf-bar-fill" style={{
+                                            width: `${barWidth}%`,
+                                            background: isWinner ? 'var(--color-success)' : 'var(--color-accent)',
+                                        }}></div>
+                                    </div>
+                                    <span style={{ minWidth: '60px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                        {s.avgMs.toFixed(2)}ms
+                                    </span>
+                                </div>
+                            );
+                        })}
                     </div>
-                    {scenario.results.map((r, ri) => {
-                        const barWidth = Math.max(2, (r.time / maxTime) * 100);
-                        const isBest = r.time === Math.min(...scenario.results.map(x => x.time));
-                        return (
-                            <div key={ri} style={{ marginBottom: '6px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '3px' }}>
-                                    <span style={{ color: r.color, fontWeight: isBest ? '700' : '400' }}>
-                                        {isBest ? '🏆 ' : ''}{r.strategy}
-                                    </span>
-                                    <span style={{
-                                        color: r.time < 5 ? 'var(--color-success)' : r.time < 20 ? 'var(--color-warning)' : 'var(--color-danger)',
-                                        fontWeight: isBest ? '700' : '400',
-                                    }}>
-                                        {r.time.toFixed(2)}ms
-                                    </span>
-                                </div>
-                                <div className="perf-bar">
-                                    <div className="perf-bar-fill" style={{
-                                        width: `${barWidth}%`,
-                                        background: r.color,
-                                        opacity: isBest ? 1 : 0.5,
-                                    }}></div>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            ))}
+                );
+            })}
         </div>
     );
 }
 
-function PlaygroundStats({ strategy, itemCount, lastOp, renderTime }: { strategy: string; itemCount: number; lastOp: string; renderTime: number }) {
-    return (
-        <div style={{ display: 'flex', gap: '24px', fontSize: '0.8rem', flexWrap: 'wrap' }}>
-            <div>
-                <span className="stat-label">Strategy: </span>
-                <span className="stat-value" style={{ color: STRATEGY_COLORS[strategy] || 'var(--color-accent)' }}>{strategy}</span>
-            </div>
-            <div>
-                <span className="stat-label">Items: </span>
-                <span className="stat-value">{itemCount}</span>
-            </div>
-            <div>
-                <span className="stat-label">Last: </span>
-                <span className="stat-value">{lastOp}</span>
-            </div>
-            <div>
-                <span className="stat-label">Render: </span>
-                <span className="stat-value" style={{ color: renderTime < 5 ? 'var(--color-success)' : renderTime < 20 ? 'var(--color-warning)' : 'var(--color-danger)' }}>
-                    {renderTime.toFixed(2)}ms
-                </span>
-            </div>
-        </div>
-    );
+// ─── Benchmark Engine ───────────────────────────────────────────────────────────
+
+const STRATEGIES = ['replace', 'sequential', 'keyed', 'auto'] as const;
+const LIST_SIZE = 500;
+const RUNS = 5;
+
+type Mutation = (items: Item[]) => Item[];
+
+const SCENARIOS: Record<string, { label: string; mutation: Mutation }> = {
+    shuffle: { label: '🔀 Shuffle All', mutation: items => shuffle(items) },
+    reverse: { label: '🔃 Reverse', mutation: items => [...items].reverse() },
+    prepend: { label: '⬆ Prepend 50', mutation: items => [...createItems(50), ...items] },
+    remove: { label: '✂ Remove Half', mutation: items => items.filter((_, i) => i % 2 === 0) },
+    append: { label: '⬇ Append 50', mutation: items => [...items, ...createItems(50)] },
+    'update-text': { label: '📝 Text Update', mutation: items => items.map(it => ({ ...it, label: `${it.label}!` })) },
+};
+
+function runBenchmark(scenarioKey: string, workspace: HTMLElement): ScenarioResult {
+    const scenario = SCENARIOS[scenarioKey];
+    const results: StrategyResult[] = [];
+
+    for (const strategy of STRATEGIES) {
+        setReconciler(strategy);
+
+        const times: number[] = [];
+        for (let run = 0; run < RUNS; run++) {
+            // Fresh initial render for each run
+            nextId = 0;
+            const baseItems = createItems(LIST_SIZE);
+            render(<ItemList items={baseItems} />, workspace);
+
+            // Apply mutation and measure re-render
+            const mutated = scenario.mutation(baseItems);
+            const start = performance.now();
+            render(<ItemList items={mutated} />, workspace);
+            times.push(performance.now() - start);
+        }
+
+        // Cleanup workspace
+        render(null as any, workspace);
+
+        const avgMs = times.reduce((a, b) => a + b, 0) / times.length;
+        results.push({ strategy, avgMs });
+    }
+
+    // Find winner (lowest avg)
+    const winner = results.reduce((best, cur) => cur.avgMs < best.avgMs ? cur : best).strategy;
+
+    return { name: scenario.label, strategies: results, winner };
 }
 
 // ─── Mount ──────────────────────────────────────────────────────────────────────
 
 export default function mount() {
-    const benchRoot = document.getElementById('benchmark-results');
+    const benchResults = document.getElementById('bench-results');
+    const benchWorkspace = document.getElementById('bench-workspace');
     const playgroundList = document.getElementById('playground-list');
     const playgroundStats = document.getElementById('playground-stats');
-    if (!benchRoot || !playgroundList || !playgroundStats) return;
 
-    // Hidden root for running benchmarks without visual interference
-    const benchWorkspace = document.createElement('div');
-    benchWorkspace.style.display = 'none';
-    document.body.appendChild(benchWorkspace);
+    if (!benchResults || !benchWorkspace || !playgroundList || !playgroundStats) return;
 
-    let benchResults: ScenarioResult[] = [];
+    let allResults: ScenarioResult[] = [];
+    let savedStrategy = getReconciler();
 
-    // ── Benchmark Arena ──────────────────────────────────────────────────────
-    document.getElementById('benchmark-controls')?.addEventListener('click', (e) => {
-        const btn = (e.target as HTMLElement).closest('[data-scenario]');
-        if (!btn) return;
-        const scenario = (btn as HTMLElement).dataset.scenario!;
+    // ── Benchmark Arena ─────────────────────────────────────────────────────
+    document.querySelectorAll('[data-bench]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const scenario = (btn as HTMLElement).dataset.bench!;
 
-        if (scenario === 'run-all') {
-            benchResults = [];
-            const allScenarios = ['shuffle', 'reverse', 'prepend', 'remove-middle', 'append', 'text-update'];
+            // Save current strategy, run benches, restore
+            savedStrategy = getReconciler();
 
-            // Show loading state
-            render(<span style={{ color: 'var(--color-muted)' }}>Running benchmarks...</span>, benchRoot);
+            if (scenario === 'all') {
+                allResults = [];
+                render(<span style={{ color: 'var(--color-accent)' }}>⏳ Running all scenarios...</span>, benchResults!);
 
-            // Run each scenario sequentially with small delay for UI updates
-            let i = 0;
-            function runNext() {
-                if (i >= allScenarios.length) {
-                    // Restore original strategy
-                    setReconciler(currentStrategy as any);
-                    render(<BenchmarkResults scenarios={benchResults} />, benchRoot!);
-                    return;
+                const keys = Object.keys(SCENARIOS);
+                let i = 0;
+
+                function runNext() {
+                    if (i >= keys.length) {
+                        setReconciler(savedStrategy as any);
+                        render(<BenchmarkResults scenarios={allResults} />, benchResults!);
+                        return;
+                    }
+                    const result = runBenchmark(keys[i], benchWorkspace!);
+                    allResults.push(result);
+                    render(<BenchmarkResults scenarios={allResults} />, benchResults!);
+                    i++;
+                    setTimeout(runNext, 16); // Let the UI breathe
                 }
-                const result = runBenchmark(allScenarios[i], benchWorkspace);
-                benchResults.push(result);
-                render(<BenchmarkResults scenarios={benchResults} />, benchRoot!);
-                i++;
-                setTimeout(runNext, 10);
-            }
-            runNext();
-        } else {
-            const result = runBenchmark(scenario, benchWorkspace);
-            // Replace existing result for same scenario or add new
-            const idx = benchResults.findIndex(r => r.name === result.name);
-            if (idx >= 0) benchResults[idx] = result;
-            else benchResults.push(result);
+                runNext();
+            } else {
+                const result = runBenchmark(scenario, benchWorkspace!);
+                // Replace existing result for same scenario or add
+                const idx = allResults.findIndex(r => r.name === result.name);
+                if (idx >= 0) allResults[idx] = result;
+                else allResults.push(result);
 
-            // Restore strategy after bench
-            setReconciler(currentStrategy as any);
-            render(<BenchmarkResults scenarios={benchResults} />, benchRoot!);
-        }
+                setReconciler(savedStrategy as any);
+                render(<BenchmarkResults scenarios={allResults} />, benchResults!);
+            }
+        });
     });
 
-    // ── Live Playground ──────────────────────────────────────────────────────
+    // ── Live Playground ─────────────────────────────────────────────────────
     nextId = 0;
     let items: Item[] = createItems(12);
     let currentStrategy = 'auto';
@@ -279,33 +247,34 @@ export default function mount() {
         if (!btn) return;
         currentStrategy = (btn as HTMLElement).dataset.strategy!;
         setReconciler(currentStrategy as any);
-        lastOp = `strategy → ${currentStrategy}`;
         document.querySelectorAll('#strategy-selector .strategy-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+        lastOp = `switch → ${currentStrategy}`;
         renderPlayground();
     });
 
-    // Playground controls
-    document.getElementById('playground-controls')?.addEventListener('click', (e) => {
-        const btn = (e.target as HTMLElement).closest('[data-action]');
-        if (!btn) return;
-        const action = (btn as HTMLElement).dataset.action!;
+    // Playground actions
+    const ACTIONS: Record<string, () => void> = {
+        'add': () => { items = [...items, makeItem()]; lastOp = 'add'; },
+        'remove-last': () => { items = items.slice(0, -1); lastOp = 'remove last'; },
+        'shuffle': () => { items = shuffle(items); lastOp = 'shuffle'; },
+        'reverse': () => { items = [...items].reverse(); lastOp = 'reverse'; },
+        'prepend': () => { items = [makeItem(), ...items]; lastOp = 'prepend'; },
+        'clear': () => { items = []; lastOp = 'clear'; },
+        'reset': () => { nextId = 0; items = createItems(12); lastOp = 'reset'; },
+    };
 
-        switch (action) {
-            case 'shuffle': items = shuffle(items); lastOp = 'shuffle'; break;
-            case 'reverse': items = items.reverse(); lastOp = 'reverse'; break;
-            case 'add': items = [...items, createItem()]; lastOp = 'add'; break;
-            case 'remove': items = items.slice(0, -1); lastOp = 'remove last'; break;
-            case 'prepend': items = [createItem(), ...items]; lastOp = 'prepend'; break;
-            case 'reset': nextId = 0; items = createItems(12); lastOp = 'reset'; break;
-        }
-        renderPlayground();
+    document.querySelectorAll('[data-action]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const action = (btn as HTMLElement).dataset.action!;
+            const fn = ACTIONS[action];
+            if (fn) { fn(); renderPlayground(); }
+        });
     });
 
     return () => {
-        render(null, benchRoot);
-        render(null, playgroundList);
-        render(null, playgroundStats);
-        benchWorkspace.remove();
+        render(null as any, playgroundList!);
+        render(null as any, playgroundStats!);
+        render(null as any, benchResults!);
     };
 }

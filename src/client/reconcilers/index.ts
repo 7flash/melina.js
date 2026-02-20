@@ -14,3 +14,4 @@
 export type { Reconciler, ReconcilerContext, ReconcilerName } from './types';
 export { sequentialReconciler } from './sequential';
 export { keyedReconciler } from './keyed';
+export { replaceReconciler } from './replace';
