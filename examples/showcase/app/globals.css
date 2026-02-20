@@ -418,6 +418,14 @@ body {
     color: var(--color-foreground);
 }
 
+.list-item-value {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--color-muted);
+    min-width: 40px;
+    text-align: right;
+}
+
 .list-item.flash {
     border-color: var(--color-accent);
     background: var(--color-accent-dim);

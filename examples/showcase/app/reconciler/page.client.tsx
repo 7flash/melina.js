@@ -3,10 +3,9 @@ import type { ReconcilerName } from 'melina/client';
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
-type Item = { id: number; label: string; color: string };
+type Item = { id: number; label: string; value: number };
 type StrategyResult = { strategy: string; avgMs: number };
-type UseCaseResult = {
-    name: string;
+type BenchResult = {
     description: string;
     winner: string;
     strategies: StrategyResult[];
@@ -14,16 +13,13 @@ type UseCaseResult = {
 
 // ─── Data Helpers ───────────────────────────────────────────────────────────────
 
-const COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#8b5cf6', '#14b8a6'];
 let nextId = 0;
 
-function makeItem(): Item {
-    const id = ++nextId;
-    return { id, label: `Item ${id}`, color: COLORS[id % COLORS.length] };
-}
-
 function createItems(n: number): Item[] {
-    return Array.from({ length: n }, makeItem);
+    return Array.from({ length: n }, () => {
+        const id = ++nextId;
+        return { id, label: `Item ${id}`, value: id * 7 };
+    });
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -37,54 +33,89 @@ function shuffle<T>(arr: T[]): T[] {
 
 // ─── Components ─────────────────────────────────────────────────────────────────
 
-function ItemList({ items }: { items: Item[] }) {
-    return (
-        <div className="item-list">
-            {items.map(item => (
-                <div className="list-item" key={item.id}>
-                    <span className="list-item-key">#{item.id}</span>
-                    <span className="list-item-label">{item.label}</span>
-                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: item.color, flexShrink: 0 }}></span>
-                </div>
-            ))}
-        </div>
-    );
-}
-
-/** A completely different view — simulates tab swap / page navigation */
-function AltView({ items }: { items: Item[] }) {
-    return (
-        <div className="item-list">
-            {items.map(item => (
-                <div className="list-item" key={`alt-${item.id}`}>
-                    <span className="list-item-key" style={{ color: 'var(--color-warning)' }}>★{item.id}</span>
-                    <span className="list-item-label">{item.label.toUpperCase()}</span>
-                    <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: item.color, flexShrink: 0 }}></span>
-                </div>
-            ))}
-        </div>
-    );
-}
-
-function ResultCard({ result }: { result: UseCaseResult }) {
-    const maxTime = Math.max(...result.strategies.map(s => s.avgMs), 0.1);
+/**
+ * "View A" — renders items as <div> with nested spans.
+ * Used as the OLD view in the Replace benchmark.
+ */
+function ViewA({ items }: { items: Item[] }) {
     return (
         <div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--color-muted)', marginBottom: '10px' }}>
-                {result.description}
+            {items.map(item => (
+                <div key={item.id} className="list-item">
+                    <span className="list-item-key">#{item.id}</span>
+                    <span className="list-item-label">{item.label}</span>
+                    <span className="list-item-value">{item.value}</span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+/**
+ * "View B" — completely different element structure.
+ * Uses <section> > <article> > <p> + <em> instead of <div> > <span>.
+ * This forces type mismatches at every level, making diffing wasteful.
+ */
+function ViewB({ items }: { items: Item[] }) {
+    return (
+        <section>
+            {items.map(item => (
+                <article key={`b-${item.id}`} className="list-item">
+                    <p className="list-item-key">{item.id}.</p>
+                    <em className="list-item-label">{item.label.toUpperCase()}</em>
+                    <strong className="list-item-value">val={item.value}</strong>
+                </article>
+            ))}
+        </section>
+    );
+}
+
+/**
+ * Keyed item list — complex items with multiple children to make
+ * DOM node creation expensive relative to moving.
+ */
+function KeyedList({ items }: { items: Item[] }) {
+    return (
+        <div>
+            {items.map(item => (
+                <div key={item.id} className="list-item" data-id={item.id}>
+                    <span className="list-item-key">#{item.id}</span>
+                    <span className="list-item-label">{item.label}</span>
+                    <span className="list-item-value">{item.value}</span>
+                    <span style={{ opacity: 0.3, fontSize: '0.6rem' }}>{item.id % 2 === 0 ? 'even' : 'odd'}</span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+// ── Result display ──────────────────────────────────────────────────────────────
+
+function ResultCard({ result }: { result: BenchResult }) {
+    const sorted = [...result.strategies].sort((a, b) => a.avgMs - b.avgMs);
+    const fastest = sorted[0].avgMs;
+    const slowest = sorted[sorted.length - 1].avgMs;
+    const speedup = slowest > 0 ? (slowest / fastest).toFixed(1) : '?';
+
+    return (
+        <div>
+            <div style={{
+                fontSize: '0.75rem', color: 'var(--color-muted)', marginBottom: '10px',
+            }}>
+                {result.description} — <strong style={{ color: 'var(--color-success)' }}>🏆 {result.winner}</strong> wins ({speedup}× faster)
             </div>
-            {result.strategies.map((s, i) => {
-                const isWinner = s.strategy === result.winner;
-                const barWidth = Math.max(3, (s.avgMs / maxTime) * 100);
-                const barColor = isWinner ? 'var(--color-success)' : 'var(--color-accent)';
+            {sorted.map((s, i) => {
+                const isWinner = i === 0;
+                const barWidth = Math.max(4, (s.avgMs / slowest) * 100);
+                const barColor = isWinner ? 'var(--color-success)' : i === sorted.length - 1 ? 'var(--color-danger)' : 'var(--color-accent)';
                 return (
                     <div key={i} style={{
                         display: 'flex', alignItems: 'center', gap: '8px',
                         marginBottom: '6px', fontSize: '0.78rem',
                     }}>
                         <span style={{
-                            minWidth: '90px', fontFamily: 'var(--font-mono)',
-                            color: isWinner ? 'var(--color-success)' : 'var(--color-foreground)',
+                            minWidth: '100px', fontFamily: 'var(--font-mono)',
+                            color: isWinner ? 'var(--color-success)' : 'inherit',
                             fontWeight: isWinner ? 700 : 400,
                         }}>
                             {isWinner ? '🏆 ' : '   '}{s.strategy}
@@ -93,8 +124,8 @@ function ResultCard({ result }: { result: UseCaseResult }) {
                             <div className="perf-bar-fill" style={{ width: `${barWidth}%`, background: barColor }}></div>
                         </div>
                         <span style={{
-                            minWidth: '65px', textAlign: 'right', fontFamily: 'var(--font-mono)',
-                            color: isWinner ? 'var(--color-success)' : 'inherit',
+                            minWidth: '75px', textAlign: 'right', fontFamily: 'var(--font-mono)',
+                            color: isWinner ? 'var(--color-success)' : i === sorted.length - 1 ? 'var(--color-danger)' : 'inherit',
                             fontWeight: isWinner ? 700 : 400,
                         }}>
                             {s.avgMs.toFixed(2)}ms
@@ -122,110 +153,143 @@ function PlaygroundStats({ strategy, itemCount, lastOp, renderTime }: {
 
 // ─── Benchmark Engine ───────────────────────────────────────────────────────────
 
-const STRATEGIES: ReconcilerName[] = ['replace', 'sequential', 'keyed', 'auto'];
-const LIST_SIZE = 500;
-const RUNS = 5;
+const STRATEGIES: ReconcilerName[] = ['replace', 'sequential', 'keyed'];
 
 /**
- * Each use case defines:
- * - setup(): create the initial state and render it
- * - mutation(): transform the state in a way that favors one strategy
+ * Large list sizes amplify the algorithmic differences.
+ * With 3000 items and 15 runs, the winner is consistent and clear.
  */
-type UseCase = {
-    name: string;
-    description: string;
-    expectedWinner: string;
-    setup: () => Item[];
-    /** Returns [newItems, newView] — newView lets us swap to a completely different component */
-    mutate: (items: Item[]) => { items: Item[]; swapView?: boolean };
-};
+const LIST_SIZE = 3000;
+const APPEND_SIZE = 500;
+const RUNS = 15;
 
-const USE_CASES: UseCase[] = [
-    {
-        name: 'replace',
-        description: 'Swaps 500 items to a completely different view (tab switch). Replace wins because there\'s nothing to diff — nuke and rebuild is O(1).',
-        expectedWinner: 'replace',
-        setup: () => { nextId = 0; return createItems(LIST_SIZE); },
-        mutate: () => {
-            nextId = 0;
-            return { items: createItems(LIST_SIZE), swapView: true };
-        },
-    },
-    {
-        name: 'sequential',
-        description: 'Appends 100 items then updates all labels. Sequential wins because items stay in their positions — index-based patching skips key lookups.',
-        expectedWinner: 'sequential',
-        setup: () => { nextId = 0; return createItems(LIST_SIZE); },
-        mutate: (items) => {
-            const appended = [...items, ...createItems(100)];
-            return { items: appended.map(it => ({ ...it, label: `${it.label} ✓` })) };
-        },
-    },
-    {
-        name: 'keyed',
-        description: 'Shuffles all 500 items randomly. Keyed wins because it moves existing DOM nodes via key→fiber map instead of recreating them.',
-        expectedWinner: 'keyed',
-        setup: () => { nextId = 0; return createItems(LIST_SIZE); },
-        mutate: (items) => ({ items: shuffle(items) }),
-    },
-    {
-        name: 'auto',
-        description: 'Mixed workload: shuffles + appends + text updates. Auto adapts per-diff — it picks keyed when keys exist, sequential otherwise.',
-        expectedWinner: 'auto',
-        setup: () => { nextId = 0; return createItems(LIST_SIZE); },
-        mutate: (items) => {
-            // Mixed: shuffle first half, append new items, update labels on last quarter
-            const half = Math.floor(items.length / 2);
-            const quarter = Math.floor(items.length / 4);
-            const shuffled = shuffle(items.slice(0, half));
-            const stable = items.slice(half);
-            const combined = [...shuffled, ...stable, ...createItems(50)];
-            return {
-                items: combined.map((it, i) =>
-                    i >= combined.length - quarter ? { ...it, label: `${it.label} ★` } : it
-                ),
-            };
-        },
-    },
-];
+type BenchmarkFn = (workspace: HTMLElement) => BenchResult;
 
-function runUseCase(useCase: UseCase, workspace: HTMLElement): UseCaseResult {
+/**
+ * REPLACE BENCHMARK
+ * Swaps between ViewA and ViewB — completely different element types.
+ * Replace wins because it skips per-element diff entirely.
+ * Sequential wastes time trying to patch div→article (type mismatch → remove+create per element).
+ * Keyed wastes time building a Map that finds no matches.
+ */
+function benchReplace(workspace: HTMLElement): BenchResult {
     const results: StrategyResult[] = [];
 
     for (const strategy of STRATEGIES) {
         const times: number[] = [];
+
         for (let run = 0; run < RUNS; run++) {
-            const baseItems = useCase.setup();
+            nextId = 0;
+            const items = createItems(LIST_SIZE);
 
-            // Initial render
-            render(<ItemList items={baseItems} />, workspace, { reconciler: strategy });
+            // Mount initial view (ViewA)
+            render(<ViewA items={items} />, workspace, { reconciler: strategy });
 
-            // Apply mutation and measure
-            const mutation = useCase.mutate(baseItems);
+            // Generate completely different items for ViewB
+            nextId = 0;
+            const itemsB = createItems(LIST_SIZE);
+
+            // Measure: swap to ViewB (different element types everywhere)
             const start = performance.now();
-            if (mutation.swapView) {
-                render(<AltView items={mutation.items} />, workspace, { reconciler: strategy });
-            } else {
-                render(<ItemList items={mutation.items} />, workspace, { reconciler: strategy });
-            }
+            render(<ViewB items={itemsB} />, workspace, { reconciler: strategy });
             times.push(performance.now() - start);
         }
-
-        // Cleanup
         workspace.innerHTML = '';
 
-        const avgMs = times.reduce((a, b) => a + b, 0) / times.length;
+        const avgMs = times.sort((a, b) => a - b).slice(2, -2) // trim outliers
+            .reduce((a, b) => a + b, 0) / (times.length - 4 || 1);
         results.push({ strategy, avgMs });
     }
 
     const winner = results.reduce((best, cur) => cur.avgMs < best.avgMs ? cur : best).strategy;
-    return {
-        name: useCase.name,
-        description: useCase.description,
-        winner,
-        strategies: results,
-    };
+    return { description: `${LIST_SIZE} items, full view swap (different element types), ${RUNS} runs`, winner, strategies: results };
 }
+
+/**
+ * SEQUENTIAL BENCHMARK
+ * Appends items to a large existing list — items at existing positions stay identical.
+ * Sequential wins because index-by-index patching skips unchanged elements in O(1) each,
+ * then just appends new nodes. No Map/Set/LIS overhead.
+ * Keyed builds a key map for ALL existing items just to match them.
+ * Replace destroys everything and rebuilds.
+ */
+function benchSequential(workspace: HTMLElement): BenchResult {
+    const results: StrategyResult[] = [];
+
+    for (const strategy of STRATEGIES) {
+        const times: number[] = [];
+
+        for (let run = 0; run < RUNS; run++) {
+            nextId = 0;
+            const items = createItems(LIST_SIZE);
+
+            // Mount the initial list
+            render(<ViewA items={items} />, workspace, { reconciler: strategy });
+
+            // Create the appended list (same items + new ones)
+            const appended = [...items, ...createItems(APPEND_SIZE)];
+
+            // Measure: render with appended items
+            const start = performance.now();
+            render(<ViewA items={appended} />, workspace, { reconciler: strategy });
+            times.push(performance.now() - start);
+        }
+        workspace.innerHTML = '';
+
+        const avgMs = times.sort((a, b) => a - b).slice(2, -2)
+            .reduce((a, b) => a + b, 0) / (times.length - 4 || 1);
+        results.push({ strategy, avgMs });
+    }
+
+    const winner = results.reduce((best, cur) => cur.avgMs < best.avgMs ? cur : best).strategy;
+    return { description: `${LIST_SIZE}→${LIST_SIZE + APPEND_SIZE} items appended, ${RUNS} runs`, winner, strategies: results };
+}
+
+/**
+ * KEYED BENCHMARK
+ * Reverses a large list of complex items.
+ * Keyed wins because it MOVES existing DOM nodes (via LIS → only 2 nodes need moves in a reversal).
+ * Sequential patches every position — each item at index i now has different content,
+ * so it updates every prop on every child (expensive for complex items).
+ * Replace destroys all nodes and creates new ones from scratch.
+ */
+function benchKeyed(workspace: HTMLElement): BenchResult {
+    const results: StrategyResult[] = [];
+
+    for (const strategy of STRATEGIES) {
+        const times: number[] = [];
+
+        for (let run = 0; run < RUNS; run++) {
+            nextId = 0;
+            const items = createItems(LIST_SIZE);
+
+            // Mount initial list (keyed)
+            render(<KeyedList items={items} />, workspace, { reconciler: strategy });
+
+            // Reverse the list (same items, different order)
+            const reversed = [...items].reverse();
+
+            // Measure: render reversed list
+            const start = performance.now();
+            render(<KeyedList items={reversed} />, workspace, { reconciler: strategy });
+            times.push(performance.now() - start);
+        }
+        workspace.innerHTML = '';
+
+        const avgMs = times.sort((a, b) => a - b).slice(2, -2)
+            .reduce((a, b) => a + b, 0) / (times.length - 4 || 1);
+        results.push({ strategy, avgMs });
+    }
+
+    const winner = results.reduce((best, cur) => cur.avgMs < best.avgMs ? cur : best).strategy;
+    return { description: `${LIST_SIZE} items reversed (keyed), ${RUNS} runs`, winner, strategies: results };
+}
+
+const BENCHMARKS: Record<string, BenchmarkFn> = {
+    replace: benchReplace,
+    sequential: benchSequential,
+    keyed: benchKeyed,
+};
 
 // ─── Mount ──────────────────────────────────────────────────────────────────────
 
@@ -233,68 +297,31 @@ export default function mount() {
     const workspace = document.getElementById('bench-workspace');
     const playgroundList = document.getElementById('playground-list');
     const playgroundStats = document.getElementById('playground-stats');
-    const runAllBtn = document.getElementById('run-all-btn');
-    const runAllStatus = document.getElementById('run-all-status');
 
-    if (!workspace || !playgroundList || !playgroundStats || !runAllBtn) {
+    if (!workspace || !playgroundList || !playgroundStats) {
         console.error('[Reconciler] Missing DOM containers');
         return;
     }
 
-    // ── Benchmark Use Cases ─────────────────────────────────────────────────
+    // ── Per-Card Benchmark Buttons ──────────────────────────────────────────
 
-    function runSingleCase(useCase: UseCase) {
-        const resultEl = document.getElementById(`result-${useCase.name}`);
-        if (!resultEl) return;
+    document.querySelectorAll('[data-bench]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const benchName = (btn as HTMLElement).dataset.bench!;
+            const benchFn = BENCHMARKS[benchName];
+            const resultEl = document.getElementById(`result-${benchName}`);
+            if (!benchFn || !resultEl) return;
 
-        render(<span style={{ color: 'var(--color-accent)' }}>⏳ Running...</span>, resultEl);
+            // Disable button during run
+            btn.classList.add('disabled');
+            render(<span style={{ color: 'var(--color-accent)' }}>⏳ Benchmarking {LIST_SIZE} items × {RUNS} runs...</span>, resultEl);
 
-        // Defer to let UI update
-        setTimeout(() => {
-            const result = runUseCase(useCase, workspace!);
-            render(<ResultCard result={result} />, resultEl);
-        }, 16);
-    }
-
-    // Run All button
-    let running = false;
-    runAllBtn.addEventListener('click', () => {
-        if (running) return;
-        running = true;
-        runAllBtn.classList.add('disabled');
-        if (runAllStatus) runAllStatus.textContent = '⏳ Running 4 use cases...';
-
-        let i = 0;
-        function runNext() {
-            if (i >= USE_CASES.length) {
-                running = false;
-                runAllBtn!.classList.remove('disabled');
-                if (runAllStatus) runAllStatus.textContent = '✅ All done';
-                return;
-            }
-
-            const uc = USE_CASES[i];
-            const resultEl = document.getElementById(`result-${uc.name}`);
-            if (resultEl) {
-                render(<span style={{ color: 'var(--color-accent)' }}>⏳ Running {uc.name}...</span>, resultEl);
-            }
-            if (runAllStatus) runAllStatus.textContent = `⏳ ${i + 1}/${USE_CASES.length}: ${uc.name}...`;
-
+            // Defer to let UI update
             setTimeout(() => {
-                const result = runUseCase(uc, workspace!);
-                if (resultEl) render(<ResultCard result={result} />, resultEl);
-                i++;
-                setTimeout(runNext, 16);
-            }, 16);
-        }
-        runNext();
-    });
-
-    // Individual card click-to-run
-    USE_CASES.forEach(uc => {
-        const card = document.getElementById(`case-${uc.name}`);
-        card?.querySelector('.demo-card-title')?.addEventListener('click', () => {
-            if (!running) runSingleCase(uc);
+                const result = benchFn(workspace!);
+                render(<ResultCard result={result} />, resultEl);
+                btn.classList.remove('disabled');
+            }, 32);
         });
     });
 
@@ -304,6 +331,19 @@ export default function mount() {
     let currentStrategy: ReconcilerName = 'auto';
     let lastOp = 'init';
     let lastRenderTime = 0;
+
+    function ItemList({ items: listItems }: { items: Item[] }) {
+        return (
+            <div className="item-list">
+                {listItems.map(item => (
+                    <div className="list-item" key={item.id}>
+                        <span className="list-item-key">#{item.id}</span>
+                        <span className="list-item-label">{item.label}</span>
+                    </div>
+                ))}
+            </div>
+        );
+    }
 
     function renderPlayground() {
         const start = performance.now();
@@ -330,11 +370,11 @@ export default function mount() {
 
     // Playground actions
     const ACTIONS: Record<string, () => void> = {
-        'add': () => { items = [...items, makeItem()]; lastOp = 'add'; },
+        'add': () => { items = [...items, { id: ++nextId, label: `Item ${nextId}`, value: nextId * 7 }]; lastOp = 'add'; },
         'remove-last': () => { items = items.slice(0, -1); lastOp = 'remove last'; },
         'shuffle': () => { items = shuffle(items); lastOp = 'shuffle'; },
         'reverse': () => { items = [...items].reverse(); lastOp = 'reverse'; },
-        'prepend': () => { items = [makeItem(), ...items]; lastOp = 'prepend'; },
+        'prepend': () => { items = [{ id: ++nextId, label: `Item ${nextId}`, value: nextId * 7 }, ...items]; lastOp = 'prepend'; },
         'clear': () => { items = []; lastOp = 'clear'; },
         'reset': () => { nextId = 0; items = createItems(12); lastOp = 'reset'; },
     };
@@ -348,7 +388,7 @@ export default function mount() {
     });
 
     return () => {
-        playgroundList.innerHTML = '';
-        playgroundStats.innerHTML = '';
+        playgroundList!.innerHTML = '';
+        playgroundStats!.innerHTML = '';
     };
 }
