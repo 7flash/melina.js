@@ -19,6 +19,11 @@ const isDev = process.env.NODE_ENV !== "production";
 export const buildCache: Record<string, { outputPath: string; content: ArrayBuffer }> = {};
 export const builtAssets: Record<string, { content: ArrayBuffer; contentType: string }> = {};
 
+// Dev-mode mtime cache — only rebuild when source files actually change.
+// Without this, every navigation triggers full PostCSS+Tailwind + Bun builds,
+// which crashes the server after a few rapid navigations on Windows.
+const devMtimeCache = new Map<string, { mtime: number; outputPath: string }>();
+
 // Build deduplication — prevent concurrent builds of the same file
 const buildInFlight = new Map<string, Promise<string>>();
 
@@ -120,8 +125,20 @@ export async function buildClientScript(clientPath: string): Promise<string> {
 }
 
 async function _buildClientScriptImpl(clientPath: string): Promise<string> {
+    // Production: use permanent cache
     if (!isDev && buildCache[clientPath]) {
         return buildCache[clientPath].outputPath;
+    }
+
+    // Dev: use mtime cache — skip rebuild if source hasn't changed
+    if (isDev) {
+        try {
+            const mtime = Bun.file(clientPath).lastModified;
+            const cached = devMtimeCache.get(clientPath);
+            if (cached && cached.mtime === mtime) {
+                return cached.outputPath;
+            }
+        } catch { /* stat failed, rebuild */ }
     }
 
     const source = readFileSync(clientPath, 'utf-8');
@@ -179,6 +196,15 @@ async function _buildClientScriptImpl(clientPath: string): Promise<string> {
 
     const outputPath = `/${path.basename(mainOutput.path)}`;
     buildCache[clientPath] = { outputPath, content: await mainOutput.arrayBuffer() };
+
+    // Update mtime cache for dev mode
+    if (isDev) {
+        try {
+            const mtime = Bun.file(clientPath).lastModified;
+            devMtimeCache.set(clientPath, { mtime, outputPath });
+        } catch { /* ok */ }
+    }
+
     return outputPath;
 }
 
@@ -311,6 +337,18 @@ export async function buildStyle(filePath: string): Promise<string> {
 
 async function _buildStyleImpl(absolutePath: string, filePath: string): Promise<string> {
 
+    // Dev: use mtime cache — skip rebuild if source hasn't changed
+    if (isDev) {
+        try {
+            const stat = Bun.file(absolutePath);
+            const mtime = (await stat.stat?.())?.mtimeMs ?? stat.lastModified;
+            const cached = devMtimeCache.get(absolutePath);
+            if (cached && cached.mtime === mtime) {
+                return cached.outputPath;
+            }
+        } catch { /* stat failed, rebuild */ }
+    }
+
     const ext = path.extname(absolutePath).toLowerCase();
     const baseName = path.basename(absolutePath, ext);
 
@@ -342,6 +380,15 @@ async function _buildStyleImpl(absolutePath: string, filePath: string): Promise<
     const content = new TextEncoder().encode(finalCss);
     buildCache[filePath] = { outputPath, content };
     builtAssets[outputPath] = { content, contentType };
+
+    // Update mtime cache for dev mode
+    if (isDev) {
+        try {
+            const mtime = Bun.file(absolutePath).lastModified;
+            devMtimeCache.set(absolutePath, { mtime, outputPath });
+        } catch { /* ok */ }
+    }
+
     return outputPath;
 }
 

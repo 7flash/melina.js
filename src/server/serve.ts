@@ -15,16 +15,16 @@ const isDev = process.env.NODE_ENV !== "production";
 
 // ─── Global Error Handlers ──────────────────────────────────────────────────────
 // Prevent the Bun process from dying on unhandled errors.
-// In dev mode, log the error and continue — the server should never crash.
+// ALWAYS log full stack traces — errors must be visible in both dev and production.
 
 process.on('unhandledRejection', (reason: any) => {
-    console.error('[Melina] Unhandled Promise Rejection (server kept alive):', reason?.message ?? reason);
-    if (isDev && reason?.stack) console.error(reason.stack);
+    console.error('[Melina] Unhandled Promise Rejection (server kept alive):');
+    console.error(reason instanceof Error ? reason.stack ?? reason.message : reason);
 });
 
 process.on('uncaughtException', (error: Error) => {
-    console.error('[Melina] Uncaught Exception (server kept alive):', error.message);
-    if (isDev) console.error(error.stack);
+    console.error('[Melina] Uncaught Exception (server kept alive):');
+    console.error(error.stack ?? error.message);
 });
 
 // Global cleanup function for unix socket
