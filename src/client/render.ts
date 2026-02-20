@@ -147,7 +147,7 @@ function diffChildren(
 ): void {
     const flatNew = flattenChildren(newVNodes);
 
-    // Resolve effective reconciler: per-render override > global
+    // Per-render override OR global strategy
     const effective = _renderScopedReconciler ?? activeReconciler;
 
     // Custom reconciler function — delegate entirely
@@ -156,23 +156,31 @@ function diffChildren(
         return;
     }
 
-    // Named strategy — direct lookup
-    const named = RECONCILERS[effective];
-    if (named) {
-        named(parentFiber, parentNode, oldFibers, flatNew, reconcilerCtx);
-        return;
-    }
-
-    // 'auto' — inspect children for keys
+    // Detect keys in this set of children
     const hasKeys = flatNew.some(v => v && typeof v === 'object' && 'key' in v && v.key != null)
         || oldFibers.some(f => f.key != null);
 
+    // Named strategy resolution — key-aware at every level:
+    //   'keyed'     → use keyed ONLY when keys exist, else sequential
+    //   'sequential'→ always sequential (ignores keys entirely)
+    //   'auto'      → keyed when keys present, sequential otherwise
+    //   'replace'   → always replace
+    if (effective === 'replace') {
+        RECONCILERS.replace(parentFiber, parentNode, oldFibers, flatNew, reconcilerCtx);
+        return;
+    }
+    if (effective === 'sequential') {
+        sequentialReconciler(parentFiber, parentNode, oldFibers, flatNew, reconcilerCtx);
+        return;
+    }
+    // 'keyed' and 'auto' both respect key presence
     if (hasKeys) {
         keyedReconciler(parentFiber, parentNode, oldFibers, flatNew, reconcilerCtx);
     } else {
         sequentialReconciler(parentFiber, parentNode, oldFibers, flatNew, reconcilerCtx);
     }
 }
+
 
 // ─── Strategy 3: Property Patching ─────────────────────────────────────────────
 
@@ -234,7 +242,35 @@ function patchProps(
     }
 }
 
+// ─── Shallow Props Comparison ───────────────────────────────────────────────────
+
+/**
+ * Compare two props objects for shallow equality.
+ * Ignores `children` and `key` — only compares actual props that affect rendering.
+ * Used to bail out of component re-execution when props haven't changed.
+ */
+function shallowPropsEqual(a: Record<string, any>, b: Record<string, any>): boolean {
+    if (a === b) return true;
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    // Quick-check: count non-children/key props
+    let aCount = 0, bCount = 0;
+    for (let i = 0; i < aKeys.length; i++) {
+        const k = aKeys[i];
+        if (k === 'children' || k === 'key') continue;
+        aCount++;
+        if (a[k] !== b[k]) return false;
+    }
+    for (let i = 0; i < bKeys.length; i++) {
+        const k = bKeys[i];
+        if (k === 'children' || k === 'key') continue;
+        bCount++;
+    }
+    return aCount === bCount;
+}
+
 // ─── Patch: Diff one fiber against a new VNode ─────────────────────────────────
+
 
 function patchFiber(
     oldFiber: Fiber,
@@ -294,8 +330,15 @@ function patchFiber(
             return oldFiber;
         }
 
-        // Component — re-execute and diff result
+        // Component — skip re-execute if props haven't changed (shallow compare)
         if (typeof newVNode.type === 'function') {
+            // Shallow-compare props (excluding children which aren't used for key matching).
+            // This is the critical optimization for keyed reconciliation:
+            // matched items have identical props → skip component re-execution entirely.
+            if (shallowPropsEqual(oldVNode.props, newVNode.props)) {
+                oldFiber.vnode = newVNode;
+                return oldFiber;
+            }
             const result = (newVNode.type as Component)(newVNode.props);
             const resultArr = result ? [result] : [];
             const componentParent = oldFiber.node || parentNode;
@@ -307,6 +350,7 @@ function patchFiber(
             }
             return oldFiber;
         }
+
 
         // Same HTML element — patch props + diff children
         const el = oldFiber.node as HTMLElement;

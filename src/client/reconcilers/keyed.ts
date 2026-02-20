@@ -70,12 +70,11 @@ export const keyedReconciler: Reconciler = (
     let anchor: Node | null = null;
     for (let i = newFibers.length - 1; i >= 0; i--) {
         const fiber = newFibers[i];
-        const nodes = ctx.collectNodes(fiber);
-        if (nodes.length === 0) continue;
-
         const needsMove = sources[i] === -1 || !lisValues.has(sources[i]);
 
         if (needsMove) {
+            const nodes = ctx.collectNodes(fiber);
+            if (nodes.length === 0) continue;
             for (const node of nodes) {
                 if (anchor) {
                     parentNode.insertBefore(node, anchor);
@@ -83,12 +82,23 @@ export const keyedReconciler: Reconciler = (
                     parentNode.appendChild(node);
                 }
             }
+            anchor = nodes[0];
+        } else {
+            // Non-moving item — just get the first node for anchor without full traversal
+            const node = fiber.node;
+            if (node) {
+                anchor = node;
+            } else if (fiber.children.length > 0) {
+                // Component/fragment fiber — find first child's node
+                const nodes = ctx.collectNodes(fiber);
+                if (nodes.length > 0) anchor = nodes[0];
+            }
         }
-        anchor = nodes[0];
     }
 
     parentFiber.children = newFibers;
 };
+
 
 /**
  * Longest Increasing Subsequence — O(n log n)
