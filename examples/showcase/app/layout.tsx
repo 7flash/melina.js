@@ -36,7 +36,7 @@ export default function RootLayout({ children }: { children: any }) {
                                         key={item.href}
                                         href={item.href}
                                         data-link
-                                        className={`nav-link${i === 0 ? ' active' : ''}`}
+                                        className="nav-link"
                                         data-nav-href={item.href}
                                     >
                                         <span className="nav-icon">{item.icon}</span>

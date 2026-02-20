@@ -1,4 +1,5 @@
 export default function mount() {
+    // ─── Active nav highlighting ────────────────────────────
     function updateActiveNav() {
         const path = window.location.pathname;
         document.querySelectorAll('.nav-link').forEach(link => {
@@ -10,79 +11,86 @@ export default function mount() {
 
     updateActiveNav();
 
-    // Track page-level cleanups
+    // ─── SPA navigation state ───────────────────────────────
+    let navigating = false;
     let pageCleanup: (() => void) | null = null;
 
     async function navigateTo(href: string) {
-        // 1. Run page cleanup from previous mount
-        if (pageCleanup) {
-            try { pageCleanup(); } catch { }
-            pageCleanup = null;
-        }
+        if (navigating) return;     // prevent concurrent navigations
+        navigating = true;
 
-        // Also clean framework-level page cleanups
-        const cleanups = (window as any).__melinaCleanups__ as Array<{ type: string; cleanup: () => void }> | undefined;
-        if (cleanups) {
-            for (let i = cleanups.length - 1; i >= 0; i--) {
-                if (cleanups[i].type === 'page') {
-                    try { cleanups[i].cleanup(); } catch { }
-                    cleanups.splice(i, 1);
-                }
+        try {
+            // 1. Cleanup old page scripts
+            if (pageCleanup) {
+                try { pageCleanup(); } catch { }
+                pageCleanup = null;
             }
-        }
-
-        // 2. Fetch new page
-        const res = await fetch(href);
-        const html = await res.text();
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-
-        // 3. Swap only the content area
-        const newContent = doc.getElementById('melina-page-content');
-        const current = document.getElementById('melina-page-content');
-        if (newContent && current) {
-            current.innerHTML = newContent.innerHTML;
-        }
-
-        // 4. Update URL & nav
-        history.pushState(null, '', href);
-        updateActiveNav();
-
-        // 5. Extract and run page client scripts from the response
-        //    Look for page.client script imports in the HTML
-        const scriptTags = doc.querySelectorAll('script[type="module"]');
-        for (const script of scriptTags) {
-            const text = script.textContent || '';
-            // Match page.client imports like: import('/page.client-abc123.js')
-            const match = text.match(/import\('(\/page\.client[^']+)'\)/);
-            if (match) {
-                try {
-                    const mod = await import(match[1]);
-                    if (typeof mod.default === 'function') {
-                        const cleanup = mod.default({ params: (window as any).__MELINA_PARAMS__ || {} });
-                        if (typeof cleanup === 'function') {
-                            pageCleanup = cleanup;
-                        }
+            const cleanups = (window as any).__melinaCleanups__ as Array<{ type: string; cleanup: () => void }> | undefined;
+            if (cleanups) {
+                for (let i = cleanups.length - 1; i >= 0; i--) {
+                    if (cleanups[i].type === 'page') {
+                        try { cleanups[i].cleanup(); } catch { }
+                        cleanups.splice(i, 1);
                     }
-                } catch (e) {
-                    console.error('[Melina] Failed to mount page script:', e);
                 }
             }
-        }
 
-        // 6. Update params from the response
-        for (const script of scriptTags) {
-            const text = script.textContent || '';
-            const paramsMatch = text.match(/window\.__MELINA_PARAMS__\s*=\s*({[^}]*})/);
-            if (paramsMatch) {
-                try {
-                    (window as any).__MELINA_PARAMS__ = JSON.parse(paramsMatch[1]);
-                } catch { }
+            // 2. Fetch new page
+            const res = await fetch(href);
+            const html = await res.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+
+            // 3. Swap content area only
+            const newContent = doc.getElementById('melina-page-content');
+            const current = document.getElementById('melina-page-content');
+            if (newContent && current) {
+                current.innerHTML = newContent.innerHTML;
             }
+
+            // 4. Update URL and active nav
+            if (href !== window.location.pathname) {
+                history.pushState(null, '', href);
+            }
+            updateActiveNav();
+
+            // 5. Extract params from response
+            const scriptTags = doc.querySelectorAll('script');
+            for (const script of scriptTags) {
+                const text = script.textContent || '';
+                const paramsMatch = text.match(/window\.__MELINA_PARAMS__\s*=\s*(\{[^}]*\})/);
+                if (paramsMatch) {
+                    try { (window as any).__MELINA_PARAMS__ = JSON.parse(paramsMatch[1]); } catch { }
+                }
+            }
+
+            // 6. Find and mount new page client script
+            const moduleScripts = doc.querySelectorAll('script[type="module"]');
+            for (const script of moduleScripts) {
+                const text = script.textContent || '';
+                const match = text.match(/import\('(\/page\.client[^']+)'\)/);
+                if (match) {
+                    try {
+                        // Cache-bust to ensure fresh mount execution
+                        const mod = await import(match[1] + '?t=' + Date.now());
+                        if (typeof mod.default === 'function') {
+                            const cleanup = mod.default({ params: (window as any).__MELINA_PARAMS__ || {} });
+                            if (typeof cleanup === 'function') {
+                                pageCleanup = cleanup;
+                            }
+                        }
+                    } catch (e) {
+                        console.error('[Melina] Failed to mount page script:', e);
+                    }
+                    break;
+                }
+            }
+        } finally {
+            navigating = false;
         }
     }
 
-    // SPA navigation via data-link
+    // ─── Click handler (SPA navigation) ─────────────────────
     document.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
         const link = target.closest('[data-link]') as HTMLAnchorElement | null;
@@ -92,26 +100,12 @@ export default function mount() {
         if (!href || href.startsWith('http')) return;
 
         e.preventDefault();
-        if (href === window.location.pathname) return;
+        if (href === window.location.pathname || navigating) return;
 
-        const content = document.getElementById('melina-page-content');
-        if (!content) return;
-
-        // Simple crossfade on the content area only (sidebar stays)
-        content.style.opacity = '0';
-        content.style.transition = 'opacity 150ms ease-out';
-
-        setTimeout(async () => {
-            await navigateTo(href);
-            // Fade in
-            requestAnimationFrame(() => {
-                content.style.opacity = '1';
-                content.style.transition = 'opacity 200ms ease-in';
-            });
-        }, 150);
+        navigateTo(href);
     });
 
-    // Handle back/forward — re-navigate properly
+    // ─── Back/forward navigation ────────────────────────────
     window.addEventListener('popstate', () => {
         navigateTo(window.location.pathname);
     });
