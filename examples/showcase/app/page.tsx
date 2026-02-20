@@ -10,43 +10,43 @@ export default function HomePage() {
             </div>
 
             <div className="feature-grid">
-                <a href="/ssr" data-link className="feature-card">
+                <a href="/ssr" className="feature-card">
                     <div className="feature-card-icon">🖥️</div>
                     <h3 className="feature-card-title">Server-Side Rendering</h3>
                     <p className="feature-card-desc">Pages render on the server with full access to the runtime, file system, and environment.</p>
                 </a>
 
-                <a href="/counter" data-link className="feature-card">
+                <a href="/counter" className="feature-card">
                     <div className="feature-card-icon">🔢</div>
                     <h3 className="feature-card-title">Client Interactivity</h3>
                     <p className="feature-card-desc">Vanilla counter using render() — no framework, just VDOM diffing and DOM patches.</p>
                 </a>
 
-                <a href="/xstate" data-link className="feature-card">
+                <a href="/xstate" className="feature-card">
                     <div className="feature-card-icon">🚦</div>
                     <h3 className="feature-card-title">XState Integration</h3>
                     <p className="feature-card-desc">Finite state machines driving UI updates — traffic light FSM and actor-based counter.</p>
                 </a>
 
-                <a href="/reconciler" data-link className="feature-card">
+                <a href="/reconciler" className="feature-card">
                     <div className="feature-card-icon">⚙️</div>
                     <h3 className="feature-card-title">Reconciler Playground</h3>
                     <p className="feature-card-desc">Compare keyed, sequential, and auto diffing strategies in real-time.</p>
                 </a>
 
-                <a href="/items/alpha" data-link className="feature-card">
+                <a href="/items/alpha" className="feature-card">
                     <div className="feature-card-icon">🔗</div>
                     <h3 className="feature-card-title">Dynamic Routes</h3>
                     <p className="feature-card-desc">File-based [id] parameter routing with server-side data access.</p>
                 </a>
 
-                <a href="/streaming" data-link className="feature-card">
+                <a href="/streaming" className="feature-card">
                     <div className="feature-card-icon">📡</div>
                     <h3 className="feature-card-title">SSE Streaming</h3>
                     <p className="feature-card-desc">Server-Sent Events with live DOM updates via EventSource.</p>
                 </a>
 
-                <a href="/stress" data-link className="feature-card">
+                <a href="/stress" className="feature-card">
                     <div className="feature-card-icon">🔥</div>
                     <h3 className="feature-card-title">Stress Test</h3>
                     <p className="feature-card-desc">Render and reconcile 1000+ items with performance timing.</p>

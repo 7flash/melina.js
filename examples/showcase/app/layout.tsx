@@ -35,7 +35,6 @@ export default function RootLayout({ children }: { children: any }) {
                                     <a
                                         key={item.href}
                                         href={item.href}
-                                        data-link
                                         className="nav-link"
                                         data-nav-href={item.href}
                                     >

@@ -98,7 +98,7 @@ No manual configuration, no router setup.`}</div>
                 </p>
                 <div className="btn-group">
                     {Object.entries(items).map(([key, val]) => (
-                        <a key={key} href={`/items/${key}`} data-link className="btn" style={{
+                        <a key={key} href={`/items/${key}`} className="btn" style={{
                             borderColor: val.color,
                             color: key === id ? 'white' : val.color,
                             background: key === id ? val.color : 'transparent'
@@ -106,7 +106,7 @@ No manual configuration, no router setup.`}</div>
                             /items/{key}
                         </a>
                     ))}
-                    <a href="/items/unknown" data-link className="btn" style={{ borderColor: 'var(--color-danger)', color: 'var(--color-danger)' }}>
+                    <a href="/items/unknown" className="btn" style={{ borderColor: 'var(--color-danger)', color: 'var(--color-danger)' }}>
                         /items/unknown
                     </a>
                 </div>
