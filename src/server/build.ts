@@ -119,6 +119,14 @@ export async function buildClientScript(clientPath: string): Promise<string> {
     buildInFlight.set(clientPath, promise);
     try {
         return await promise;
+    } catch (err) {
+        // If build fails but we have a cached fallback, use it instead of crashing
+        const cached = buildCache[clientPath];
+        if (cached) {
+            console.error(`[Melina] Build failed for ${clientPath}, using cached version:`, (err as Error).message);
+            return cached.outputPath;
+        }
+        throw err;
     } finally {
         buildInFlight.delete(clientPath);
     }
@@ -330,6 +338,13 @@ export async function buildStyle(filePath: string): Promise<string> {
     buildInFlight.set(filePath, promise);
     try {
         return await promise;
+    } catch (err) {
+        const cached = buildCache[filePath];
+        if (cached) {
+            console.error(`[Melina] Style build failed for ${filePath}, using cached version:`, (err as Error).message);
+            return cached.outputPath;
+        }
+        throw err;
     } finally {
         buildInFlight.delete(filePath);
     }

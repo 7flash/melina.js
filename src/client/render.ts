@@ -37,12 +37,22 @@ export interface Fiber {
 
 const rootFibers = new WeakMap<HTMLElement, Fiber>();
 
+// Per-render reconciler override — set during render(), used by diffChildren()
+let _renderScopedReconciler: ReconcilerName | Reconciler | null = null;
+
+export interface RenderOptions {
+    /** Override reconciler strategy for this render call only. */
+    reconciler?: ReconcilerName | Reconciler;
+}
+
 /**
  * Render a VNode tree into a container.
  * First call: mounts the tree.
  * Subsequent calls: diffs against the previous tree and patches the DOM.
+ *
+ * @param options.reconciler  Override reconciler for this render only.
  */
-export function render(vnode: VNode | null, container: HTMLElement): Fiber {
+export function render(vnode: VNode | null, container: HTMLElement, options?: RenderOptions): Fiber {
     let rootFiber = rootFibers.get(container);
 
     if (!rootFiber) {
@@ -52,8 +62,14 @@ export function render(vnode: VNode | null, container: HTMLElement): Fiber {
         rootFibers.set(container, rootFiber);
     }
 
-    const newChildren = vnode ? [vnode] : [];
-    diffChildren(rootFiber, container, rootFiber.children, newChildren);
+    const prev = _renderScopedReconciler;
+    _renderScopedReconciler = options?.reconciler ?? null;
+    try {
+        const newChildren = vnode ? [vnode] : [];
+        diffChildren(rootFiber, container, rootFiber.children, newChildren);
+    } finally {
+        _renderScopedReconciler = prev;
+    }
 
     return rootFiber;
 }
@@ -92,24 +108,25 @@ function collectNodes(fiber: Fiber): Node[] {
 
 // ─── Pluggable Reconciler ──────────────────────────────────────────────────────
 
-/** The active reconciler. Defaults to 'auto' which selects keyed vs sequential per diff. */
+/** The global reconciler. Defaults to 'auto' which selects keyed vs sequential per diff. */
 let activeReconciler: ReconcilerName | Reconciler = 'auto';
 
+/** Named strategy lookup — avoids if/else chains. */
+const RECONCILERS: Record<string, Reconciler> = {
+    keyed: keyedReconciler,
+    sequential: sequentialReconciler,
+    replace: replaceReconciler,
+};
+
 /**
- * Set the reconciliation strategy.
- * 
- * @param strategy - 'auto' (default), 'keyed', 'sequential', or a custom Reconciler function
- * 
- * Examples:
- *   setReconciler('keyed');           // Force keyed for all diffs
- *   setReconciler('sequential');      // Force sequential for all diffs
- *   setReconciler(myCustomReconciler); // Plug in your own
+ * Set the global reconciliation strategy.
+ * Can be overridden per-render via `render(vnode, container, { reconciler }))`.
  */
 export function setReconciler(strategy: ReconcilerName | Reconciler): void {
     activeReconciler = strategy;
 }
 
-/** Get the current active reconciler name/function for inspection. */
+/** Get the current global reconciler name/function. */
 export function getReconciler(): ReconcilerName | Reconciler {
     return activeReconciler;
 }
@@ -130,23 +147,19 @@ function diffChildren(
 ): void {
     const flatNew = flattenChildren(newVNodes);
 
+    // Resolve effective reconciler: per-render override > global
+    const effective = _renderScopedReconciler ?? activeReconciler;
+
     // Custom reconciler function — delegate entirely
-    if (typeof activeReconciler === 'function') {
-        activeReconciler(parentFiber, parentNode, oldFibers, flatNew, reconcilerCtx);
+    if (typeof effective === 'function') {
+        effective(parentFiber, parentNode, oldFibers, flatNew, reconcilerCtx);
         return;
     }
 
-    // Named strategy selection
-    if (activeReconciler === 'keyed') {
-        keyedReconciler(parentFiber, parentNode, oldFibers, flatNew, reconcilerCtx);
-        return;
-    }
-    if (activeReconciler === 'sequential') {
-        sequentialReconciler(parentFiber, parentNode, oldFibers, flatNew, reconcilerCtx);
-        return;
-    }
-    if (activeReconciler === 'replace') {
-        replaceReconciler(parentFiber, parentNode, oldFibers, flatNew, reconcilerCtx);
+    // Named strategy — direct lookup
+    const named = RECONCILERS[effective];
+    if (named) {
+        named(parentFiber, parentNode, oldFibers, flatNew, reconcilerCtx);
         return;
     }
 
@@ -469,6 +482,9 @@ function getNextSibling(fiber: Fiber, parentNode: Node): Node | null {
 
 // ─── Navigation ────────────────────────────────────────────────────────────────
 
+/** The selector for the page content container that gets swapped on navigation. */
+const PAGE_CONTENT_SELECTOR = '#melina-page-content';
+
 export async function navigate(href: string): Promise<void> {
     if (typeof window === 'undefined') return;
     try {
@@ -497,34 +513,59 @@ export async function navigate(href: string): Promise<void> {
             document.head.appendChild(newStyleLink);
         }
 
-        // Extract new body content
-        const fragment = document.createDocumentFragment();
-        while (newDoc.body.firstChild) fragment.appendChild(document.adoptNode(newDoc.body.firstChild));
+        // ── Layout-preserving swap ──────────────────────────────────────────
+        // Only replace the page content area, not the entire body.
+        // This keeps the sidebar, layout scripts, and SSR state intact.
+        const currentContent = document.querySelector(PAGE_CONTENT_SELECTOR);
+        const newContent = newDoc.querySelector(PAGE_CONTENT_SELECTOR);
 
-        const update = () => {
+        if (currentContent && newContent) {
+            // Extract new page children
+            const fragment = document.createDocumentFragment();
+            while (newContent.firstChild) fragment.appendChild(document.adoptNode(newContent.firstChild));
+
+            const update = () => {
+                currentContent.replaceChildren(fragment);
+                window.scrollTo(0, 0);
+            };
+
+            if (document.startViewTransition) {
+                // @ts-ignore
+                await document.startViewTransition(update).finished;
+            } else {
+                update();
+            }
+
+            // Only re-execute scripts inside the page content area
+            const scripts = Array.from(currentContent.querySelectorAll('script'));
+            for (const oldScript of scripts) {
+                const newScript = document.createElement('script');
+                for (const attr of Array.from(oldScript.attributes)) {
+                    newScript.setAttribute(attr.name, attr.value);
+                }
+                if (oldScript.textContent) {
+                    newScript.textContent = oldScript.textContent;
+                }
+                oldScript.parentNode?.replaceChild(newScript, oldScript);
+            }
+        } else {
+            // Fallback: no #melina-page-content found, replace entire body
+            const fragment = document.createDocumentFragment();
+            while (newDoc.body.firstChild) fragment.appendChild(document.adoptNode(newDoc.body.firstChild));
             document.body.replaceChildren(fragment);
             window.scrollTo(0, 0);
-        };
 
-        if (document.startViewTransition) {
-            // @ts-ignore
-            await document.startViewTransition(update).finished;
-        } else {
-            update();
-        }
-
-        // Execute inline scripts from the new page (params + module bootstraps)
-        const scripts = Array.from(document.body.querySelectorAll('script'));
-        for (const oldScript of scripts) {
-            const newScript = document.createElement('script');
-            // Copy attributes
-            for (const attr of Array.from(oldScript.attributes)) {
-                newScript.setAttribute(attr.name, attr.value);
+            const scripts = Array.from(document.body.querySelectorAll('script'));
+            for (const oldScript of scripts) {
+                const newScript = document.createElement('script');
+                for (const attr of Array.from(oldScript.attributes)) {
+                    newScript.setAttribute(attr.name, attr.value);
+                }
+                if (oldScript.textContent) {
+                    newScript.textContent = oldScript.textContent;
+                }
+                oldScript.parentNode?.replaceChild(newScript, oldScript);
             }
-            if (oldScript.textContent) {
-                newScript.textContent = oldScript.textContent;
-            }
-            oldScript.parentNode?.replaceChild(newScript, oldScript);
         }
     } catch (e) {
         window.location.href = href;

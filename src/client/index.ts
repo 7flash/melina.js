@@ -24,7 +24,7 @@ export { createElement as h } from './render';
 
 // Client-side renderer
 export { render, navigate, Link, setReconciler, getReconciler } from './render';
-export type { Fiber, LinkProps } from './render';
+export type { Fiber, LinkProps, RenderOptions } from './render';
 
 // Reconciler strategies (for advanced usage)
 export { sequentialReconciler } from './reconcilers/sequential';

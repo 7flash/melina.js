@@ -310,13 +310,17 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
                 }
             }
 
+            const isNavRequest = req.headers.get('X-Melina-Nav') === '1';
             const clientScriptUrls: { url: string; type: 'layout' | 'page' }[] = [];
 
-            for (const layoutPath of match.route.layouts) {
-                const layoutClientPath = layoutPath.replace(/\.tsx?$/, '.client.tsx');
-                if (existsSync(layoutClientPath)) {
-                    const scriptPath = await buildClientScript(layoutClientPath);
-                    clientScriptUrls.push({ url: scriptPath, type: 'layout' });
+            // For nav requests, skip layout scripts — they're already loaded in the browser
+            if (!isNavRequest) {
+                for (const layoutPath of match.route.layouts) {
+                    const layoutClientPath = layoutPath.replace(/\.tsx?$/, '.client.tsx');
+                    if (existsSync(layoutClientPath)) {
+                        const scriptPath = await buildClientScript(layoutClientPath);
+                        clientScriptUrls.push({ url: scriptPath, type: 'layout' });
+                    }
                 }
             }
 
@@ -365,7 +369,27 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
             }
 
             if (clientScriptTags.length > 0) {
-                fullHtml = fullHtml.replace('</body>', `${clientScriptTags.join('\n')}</body>`);
+                if (isNavRequest) {
+                    // Nav requests: inject page scripts INSIDE #melina-page-content
+                    // so the layout-preserving navigate() picks them up when swapping.
+                    // Find the closing tag of the #melina-page-content element.
+                    const contentIdx = fullHtml.indexOf('id="melina-page-content"');
+                    if (contentIdx >= 0) {
+                        // Find the matching closing </main> after the id
+                        const closingMainIdx = fullHtml.indexOf('</main>', contentIdx);
+                        if (closingMainIdx >= 0) {
+                            fullHtml = fullHtml.slice(0, closingMainIdx)
+                                + clientScriptTags.join('\n')
+                                + fullHtml.slice(closingMainIdx);
+                        } else {
+                            fullHtml = fullHtml.replace('</body>', `${clientScriptTags.join('\n')}</body>`);
+                        }
+                    } else {
+                        fullHtml = fullHtml.replace('</body>', `${clientScriptTags.join('\n')}</body>`);
+                    }
+                } else {
+                    fullHtml = fullHtml.replace('</body>', `${clientScriptTags.join('\n')}</body>`);
+                }
             }
 
             return new Response(fullHtml, {

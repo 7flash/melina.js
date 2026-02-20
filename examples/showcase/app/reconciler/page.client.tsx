@@ -1,4 +1,5 @@
 import { render, setReconciler, getReconciler } from 'melina/client';
+import type { ReconcilerName } from 'melina/client';
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -122,7 +123,7 @@ function BenchmarkResults({ scenarios }: { scenarios: ScenarioResult[] }) {
 
 // ─── Benchmark Engine ───────────────────────────────────────────────────────────
 
-const STRATEGIES = ['replace', 'sequential', 'keyed', 'auto'] as const;
+const STRATEGIES: ReconcilerName[] = ['replace', 'sequential', 'keyed', 'auto'];
 const LIST_SIZE = 500;
 const RUNS = 5;
 
@@ -142,24 +143,22 @@ function runBenchmark(scenarioKey: string, workspace: HTMLElement): ScenarioResu
     const results: StrategyResult[] = [];
 
     for (const strategy of STRATEGIES) {
-        setReconciler(strategy);
-
         const times: number[] = [];
         for (let run = 0; run < RUNS; run++) {
-            // Fresh initial render for each run
+            // Fresh initial render for each run — use per-render override
             nextId = 0;
             const baseItems = createItems(LIST_SIZE);
-            render(<ItemList items={baseItems} />, workspace);
+            render(<ItemList items={baseItems} />, workspace, { reconciler: strategy });
 
-            // Apply mutation and measure re-render
+            // Apply mutation and measure re-render with same strategy
             const mutated = scenario.mutation(baseItems);
             const start = performance.now();
-            render(<ItemList items={mutated} />, workspace);
+            render(<ItemList items={mutated} />, workspace, { reconciler: strategy });
             times.push(performance.now() - start);
         }
 
         // Cleanup workspace
-        render(null as any, workspace);
+        render(null as any, workspace, { reconciler: 'replace' });
 
         const avgMs = times.reduce((a, b) => a + b, 0) / times.length;
         results.push({ strategy, avgMs });
@@ -182,15 +181,11 @@ export default function mount() {
     if (!benchResults || !benchWorkspace || !playgroundList || !playgroundStats) return;
 
     let allResults: ScenarioResult[] = [];
-    let savedStrategy = getReconciler();
 
     // ── Benchmark Arena ─────────────────────────────────────────────────────
     document.querySelectorAll('[data-bench]').forEach(btn => {
         btn.addEventListener('click', () => {
             const scenario = (btn as HTMLElement).dataset.bench!;
-
-            // Save current strategy, run benches, restore
-            savedStrategy = getReconciler();
 
             if (scenario === 'all') {
                 allResults = [];
@@ -201,7 +196,6 @@ export default function mount() {
 
                 function runNext() {
                     if (i >= keys.length) {
-                        setReconciler(savedStrategy as any);
                         render(<BenchmarkResults scenarios={allResults} />, benchResults!);
                         return;
                     }
@@ -219,7 +213,6 @@ export default function mount() {
                 if (idx >= 0) allResults[idx] = result;
                 else allResults.push(result);
 
-                setReconciler(savedStrategy as any);
                 render(<BenchmarkResults scenarios={allResults} />, benchResults!);
             }
         });
@@ -228,13 +221,13 @@ export default function mount() {
     // ── Live Playground ─────────────────────────────────────────────────────
     nextId = 0;
     let items: Item[] = createItems(12);
-    let currentStrategy = 'auto';
+    let currentStrategy: ReconcilerName = 'auto';
     let lastOp = 'init';
     let lastRenderTime = 0;
 
     function renderPlayground() {
         const start = performance.now();
-        render(<ItemList items={items} />, playgroundList!);
+        render(<ItemList items={items} />, playgroundList!, { reconciler: currentStrategy });
         lastRenderTime = performance.now() - start;
         render(<PlaygroundStats strategy={currentStrategy} itemCount={items.length} lastOp={lastOp} renderTime={lastRenderTime} />, playgroundStats!);
     }
@@ -245,8 +238,7 @@ export default function mount() {
     document.getElementById('strategy-selector')?.addEventListener('click', (e) => {
         const btn = (e.target as HTMLElement).closest('[data-strategy]');
         if (!btn) return;
-        currentStrategy = (btn as HTMLElement).dataset.strategy!;
-        setReconciler(currentStrategy as any);
+        currentStrategy = (btn as HTMLElement).dataset.strategy! as ReconcilerName;
         document.querySelectorAll('#strategy-selector .strategy-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         lastOp = `switch → ${currentStrategy}`;
@@ -273,8 +265,8 @@ export default function mount() {
     });
 
     return () => {
-        render(null as any, playgroundList!);
-        render(null as any, playgroundStats!);
-        render(null as any, benchResults!);
+        render(null as any, playgroundList!, { reconciler: 'replace' });
+        render(null as any, playgroundStats!, { reconciler: 'replace' });
+        render(null as any, benchResults!, { reconciler: 'replace' });
     };
 }
