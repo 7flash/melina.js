@@ -154,6 +154,9 @@ async function _buildClientScriptImpl(clientPath: string): Promise<string> {
         || /\brequire\s*\(\s*['"]react/.test(source);
 
     const jsxDomPath = path.resolve(__dirname, '../client/jsx-dom.ts');
+    const clientIndexPath = path.resolve(__dirname, '../client/index.ts');
+    const jsxDevRuntimePath = path.resolve(__dirname, '../client/jsx-dev-runtime.ts');
+    const jsxRuntimePath = path.resolve(__dirname, '../client/jsx-runtime.ts');
 
     const plugins: any[] = [];
     const external: string[] = [];
@@ -165,8 +168,20 @@ async function _buildClientScriptImpl(clientPath: string): Promise<string> {
         plugins.push({
             name: 'melina-jsx-dom',
             setup(build: any) {
+                // react/* JSX → jsx-dom.ts (real DOM elements)
                 build.onResolve({ filter: /^react\/jsx-runtime$|^react\/jsx-dev-runtime$|^react$/ }, () => {
                     return { path: jsxDomPath };
+                });
+                // melina/client/jsx-*-runtime → VDOM runtime (VNodes for render())
+                build.onResolve({ filter: /^melina\/client\/jsx-dev-runtime$/ }, () => {
+                    return { path: jsxDevRuntimePath };
+                });
+                build.onResolve({ filter: /^melina\/client\/jsx-runtime$/ }, () => {
+                    return { path: jsxRuntimePath };
+                });
+                // melina/client → actual client barrel
+                build.onResolve({ filter: /^melina\/client$/ }, () => {
+                    return { path: clientIndexPath };
                 });
             }
         });

@@ -1,7 +1,7 @@
 {
     "compilerOptions": {
         "jsx": "react-jsx",
-        "jsxImportSource": "../../src/client",
+        "jsxImportSource": "melina/client",
         "target": "ESNext",
         "module": "ESNext",
         "moduleResolution": "bundler",
