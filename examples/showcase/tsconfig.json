@@ -7,16 +7,7 @@
         "moduleResolution": "bundler",
         "strict": true,
         "noEmit": true,
-        "skipLibCheck": true,
-        "baseUrl": ".",
-        "paths": {
-            "melina/client/*": [
-                "../../src/client/*"
-            ],
-            "melina/*": [
-                "../../src/*"
-            ]
-        }
+        "skipLibCheck": true
     },
     "include": [
         "app/**/*",

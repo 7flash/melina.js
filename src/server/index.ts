@@ -49,3 +49,9 @@ export { discoverRoutes, matchRoute } from "./router";
 
 // SSR
 export { renderToString } from "./ssr";
+
+// Head component (declarative <head> management)
+export { Head } from "./head";
+
+// SSG (Static Site Generation)
+export { prerender, getPrerendered, setPrerendered, clearSSGCache } from "./ssg";

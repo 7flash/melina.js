@@ -12,8 +12,10 @@ import { measure } from 'measure-fn';
 import { discoverRoutes, matchRoute } from "./router";
 import { createElement } from "../client/render";
 import { renderToString } from "./ssr";
+import { resetHead, getHeadElements, Head } from "./head";
 import { imports } from "./imports";
-import { buildScript, buildStyle, buildAsset, buildClientScript, clientScriptsUsingReact } from "./build";
+import { buildScript, buildStyle, buildScopedStyle, buildAsset, buildClientScript, clientScriptsUsingReact } from "./build";
+import { getPrerendered, prerender as ssgPrerender } from "./ssg";
 import { serve } from "./serve";
 import type { Handler, FrontendAppOptions, RenderPageOptions, AppRouterOptions } from "./types";
 
@@ -228,7 +230,10 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
     routes.forEach(route => {
         const typeIcon = route.type === 'api' ? '⚡' : '📄';
         const layoutInfo = route.layouts.length > 0 ? ` (${route.layouts.length} layouts)` : '';
-        console.log(`   ${typeIcon} ${route.pattern} -> ${path.relative(process.cwd(), route.filePath)}${layoutInfo}`);
+        const mwInfo = route.middlewares.length > 0 ? ` [${route.middlewares.length} middleware]` : '';
+        const errorInfo = route.errorPath ? ' 🛡' : '';
+        const loadingInfo = route.loadingPath ? ' ⏳' : '';
+        console.log(`   ${typeIcon} ${route.pattern} -> ${path.relative(process.cwd(), route.filePath)}${layoutInfo}${mwInfo}${errorInfo}${loadingInfo}`);
     });
 
     let globalCss = options.globalCss;
@@ -246,6 +251,52 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
             }
         }
     }
+    // ── SSG: Pre-render eligible pages at startup ──────────────────────────
+    if (!isDev) {
+        (async () => {
+            try {
+                const count = await ssgPrerender(routes, async (route) => {
+                    const pageModule = await import(route.filePath);
+                    const PageComponent = pageModule.default || pageModule.Page;
+                    if (!PageComponent) throw new Error(`No default export in ${route.filePath}`);
+
+                    let tree = createElement(PageComponent, { params: {} });
+                    for (let i = route.layouts.length - 1; i >= 0; i--) {
+                        const layoutModule = await import(route.layouts[i]);
+                        const LayoutComponent = layoutModule.default;
+                        if (LayoutComponent) tree = createElement(LayoutComponent, { children: tree });
+                    }
+
+                    resetHead();
+                    const html = renderToString(tree);
+                    const headElements = getHeadElements();
+
+                    let fullHtml = `<!DOCTYPE html>${html}`;
+
+                    if (globalCss) {
+                        try {
+                            const stylesPath = await buildStyle(globalCss);
+                            fullHtml = fullHtml.replace('</head>', `<link rel="stylesheet" href="${stylesPath}"></head>`);
+                        } catch (_) { /* ignore */ }
+                    }
+
+                    if (headElements.length > 0) {
+                        fullHtml = fullHtml.replace('</head>', `${headElements.join('\n')}</head>`);
+                    }
+
+                    fullHtml = fullHtml.replace(
+                        'id="melina-page-content"',
+                        `id="melina-page-content" data-page="${route.pattern}"`
+                    );
+
+                    return fullHtml;
+                });
+                if (count > 0) console.log(`⚡ SSG: Pre-rendered ${count} pages`);
+            } catch (e: any) {
+                console.warn('SSG prerender failed:', e.message);
+            }
+        })();
+    }
 
     return async (req: Request, measure: any) => {
         const url = new URL(req.url);
@@ -260,7 +311,36 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
             });
         }
 
+        // ── SSG: serve pre-rendered page from memory ──────────────────
+        if (!isDev && match.route.type === 'page') {
+            const cached = getPrerendered(pathname);
+            if (cached) {
+                return new Response(cached, {
+                    headers: {
+                        'Content-Type': 'text/html',
+                        'Cache-Control': 'public, max-age=3600',
+                        'X-Melina-SSG': '1',
+                    },
+                });
+            }
+        }
+
         try {
+            // ── Middleware Chain ─────────────────────────────────────────────
+            // Execute middleware.ts files from root→page (outermost first).
+            // Each middleware can short-circuit by returning a Response.
+            if (match.route.middlewares.length > 0) {
+                for (const mwPath of match.route.middlewares) {
+                    const mwModule = await import(mwPath);
+                    const mwFn = mwModule.default || mwModule.middleware;
+                    if (typeof mwFn === 'function') {
+                        const mwResult = await mwFn(req, { params: match.params, route: match.route });
+                        // If middleware returns a Response, short-circuit
+                        if (mwResult instanceof Response) return mwResult;
+                    }
+                }
+            }
+
             // Handle API routes
             if (match.route.type === 'api') {
                 const apiModule = await import(match.route.filePath);
@@ -299,7 +379,9 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
                 }
             }
 
+            resetHead(); // Clear head elements from previous render
             const html = renderToString(tree);
+            const headElements = getHeadElements(); // Collect <Head> children
 
             let stylesVirtualPath = '';
             if (globalCss) {
@@ -307,6 +389,17 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
                     stylesVirtualPath = await buildStyle(globalCss);
                 } catch (e) {
                     console.warn('Failed to build global CSS:', e);
+                }
+            }
+
+            // Build page-scoped CSS if page.css exists alongside page.tsx
+            let scopedStylePath = '';
+            const pageCssPath = match.route.filePath.replace(/\.(tsx?|jsx?)$/, '.css');
+            if (existsSync(pageCssPath)) {
+                try {
+                    scopedStylePath = await buildScopedStyle(pageCssPath, match.route.pattern);
+                } catch (e) {
+                    console.warn('Failed to build scoped CSS:', e);
                 }
             }
 
@@ -364,6 +457,22 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
                 fullHtml = fullHtml.replace('</head>', `<link rel="stylesheet" href="${stylesVirtualPath}"></head>`);
             }
 
+            // Inject page-scoped CSS
+            if (scopedStylePath) {
+                fullHtml = fullHtml.replace('</head>', `<link rel="stylesheet" href="${scopedStylePath}"></head>`);
+            }
+
+            // Add data-page attribute for scoped CSS targeting
+            fullHtml = fullHtml.replace(
+                'id="melina-page-content"',
+                `id="melina-page-content" data-page="${match.route.pattern}"`
+            );
+
+            // Inject <Head> elements (title, meta, etc.)
+            if (headElements.length > 0) {
+                fullHtml = fullHtml.replace('</head>', `${headElements.join('\n')}</head>`);
+            }
+
             if (importMapTag) {
                 fullHtml = fullHtml.replace('</head>', `${importMapTag}</head>`);
             }
@@ -402,6 +511,51 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
             console.error('Error rendering page:', error);
             const errorMessage = error?.message || String(error);
             const errorStack = error?.stack || 'No stack trace available';
+
+            // ── Error Boundary: render error.tsx if available ────────────
+            if (match.route.errorPath) {
+                try {
+                    const errorModule = await import(match.route.errorPath);
+                    const ErrorComponent = errorModule.default;
+                    if (ErrorComponent) {
+                        const errorProps = {
+                            error: { message: errorMessage, stack: isDev ? errorStack : undefined },
+                            pathname: url.pathname,
+                        };
+                        let errorTree = createElement(ErrorComponent, errorProps);
+
+                        // Wrap in layouts (error page should still have app chrome)
+                        for (let i = match.route.layouts.length - 1; i >= 0; i--) {
+                            const layoutPath = match.route.layouts[i];
+                            const layoutModule = await import(layoutPath);
+                            const LayoutComponent = layoutModule.default;
+                            if (LayoutComponent) {
+                                errorTree = createElement(LayoutComponent, { children: errorTree });
+                            }
+                        }
+
+                        const errorHtml = renderToString(errorTree);
+                        let fullErrorHtml = `<!DOCTYPE html>${errorHtml}`;
+
+                        if (globalCss) {
+                            try {
+                                const stylesPath = await buildStyle(globalCss);
+                                fullErrorHtml = fullErrorHtml.replace('</head>', `<link rel="stylesheet" href="${stylesPath}"></head>`);
+                            } catch (_) { /* ignore CSS errors during error rendering */ }
+                        }
+
+                        return new Response(fullErrorHtml, {
+                            status: 500,
+                            headers: { 'Content-Type': 'text/html' },
+                        });
+                    }
+                } catch (errorBoundaryError: any) {
+                    console.error('Error boundary itself failed:', errorBoundaryError);
+                    // Fall through to generic error page
+                }
+            }
+
+            // Generic fallback error page
             return new Response(`
         <!DOCTYPE html>
         <html>

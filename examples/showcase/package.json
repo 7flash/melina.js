@@ -2,6 +2,7 @@
     "name": "melina-showcase",
     "private": true,
     "dependencies": {
-        "xstate": "^5.19.0"
+        "xstate": "^5.19.0",
+        "melina": "link:../../"
     }
 }

@@ -388,11 +388,11 @@ async function _buildStyleImpl(absolutePath: string, filePath: string): Promise<
     if (isDev && result.map) {
         const sourceMapPath = `${outputPath}.map`;
         const sourceMapContent = result.map.toString();
-        builtAssets[sourceMapPath] = { content: new TextEncoder().encode(sourceMapContent), contentType: 'application/json' };
+        builtAssets[sourceMapPath] = { content: new TextEncoder().encode(sourceMapContent).buffer as ArrayBuffer, contentType: 'application/json' };
         finalCss += `\n/*# sourceMappingURL=${path.basename(sourceMapPath)} */`;
     }
 
-    const content = new TextEncoder().encode(finalCss);
+    const content = new TextEncoder().encode(finalCss).buffer as ArrayBuffer;
     buildCache[filePath] = { outputPath, content };
     builtAssets[outputPath] = { content, contentType };
 
@@ -405,6 +405,161 @@ async function _buildStyleImpl(absolutePath: string, filePath: string): Promise<
     }
 
     return outputPath;
+}
+
+// ─── Scoped Page CSS ────────────────────────────────────────────────────────────
+
+/**
+ * Build a page-scoped CSS file. All selectors are prefixed with
+ * `[data-page="/route"]` so styles only apply within that page.
+ * 
+ * @param filePath Path to the page.css file
+ * @param routePattern The route pattern (e.g. "/about")
+ * @returns URL path to the built scoped asset
+ */
+export async function buildScopedStyle(filePath: string, routePattern: string): Promise<string> {
+    const cacheKey = `scoped:${filePath}:${routePattern}`;
+    if (!isDev && buildCache[cacheKey]) {
+        return buildCache[cacheKey].outputPath;
+    }
+
+    const existing = buildInFlight.get(cacheKey);
+    if (existing) return existing;
+
+    const promise = _buildScopedStyleImpl(filePath, routePattern, cacheKey);
+    buildInFlight.set(cacheKey, promise);
+    try {
+        return await promise;
+    } finally {
+        buildInFlight.delete(cacheKey);
+    }
+}
+
+async function _buildScopedStyleImpl(filePath: string, routePattern: string, cacheKey: string): Promise<string> {
+    const absolutePath = path.resolve(process.cwd(), filePath);
+    if (!existsSync(absolutePath)) {
+        throw new Error(`Scoped style not found: ${filePath}`);
+    }
+
+    // Dev mtime cache
+    if (isDev) {
+        try {
+            const mtime = Bun.file(absolutePath).lastModified;
+            const cached = devMtimeCache.get(cacheKey);
+            if (cached && cached.mtime === mtime) return cached.outputPath;
+        } catch { /* rebuild */ }
+    }
+
+    const cssContent = await Bun.file(absolutePath).text();
+    const result = await serializedBuild(() =>
+        postcss([autoprefixer, tailwind]).process(cssContent, {
+            from: absolutePath,
+            to: 'scoped.css',
+            map: false,
+        })
+    );
+
+    if (!result.css) throw new Error(`PostCSS returned empty for ${absolutePath}`);
+
+    // Scope selectors: prefix with [data-page="/route"]
+    const scope = `[data-page="${routePattern}"]`;
+    const scopedCss = scopeSelectors(result.css, scope);
+
+    const hash = new Bun.CryptoHasher("sha256").update(scopedCss).digest('hex').slice(0, 8);
+    const baseName = path.basename(absolutePath, path.extname(absolutePath));
+    const outputPath = `/${baseName}-${routePattern.replace(/\//g, '-').replace(/^-/, '')}-${hash}.css`;
+    const content = new TextEncoder().encode(scopedCss).buffer as ArrayBuffer;
+
+    buildCache[cacheKey] = { outputPath, content };
+    builtAssets[outputPath] = { content, contentType: 'text/css' };
+
+    if (isDev) {
+        try {
+            const mtime = Bun.file(absolutePath).lastModified;
+            devMtimeCache.set(cacheKey, { mtime, outputPath });
+        } catch { /* ok */ }
+    }
+
+    return outputPath;
+}
+
+/**
+ * Prefix CSS selectors with a scope attribute selector.
+ * Handles @-rules, nested blocks, and special selectors.
+ */
+function scopeSelectors(css: string, scope: string): string {
+    const lines: string[] = [];
+    let inAtRule = 0; // nesting depth for @media, @supports, etc.
+
+    for (const line of css.split('\n')) {
+        const trimmed = line.trim();
+
+        // Skip empty lines and comments
+        if (!trimmed || trimmed.startsWith('/*') || trimmed.startsWith('*') || trimmed === '*/') {
+            lines.push(line);
+            continue;
+        }
+
+        // @keyframes, @font-face — don't scope
+        if (trimmed.startsWith('@keyframes') || trimmed.startsWith('@font-face')) {
+            lines.push(line);
+            inAtRule++;
+            continue;
+        }
+
+        // @media, @supports, @layer — pass through, scope inner rules
+        if (trimmed.startsWith('@media') || trimmed.startsWith('@supports') || trimmed.startsWith('@layer')) {
+            lines.push(line);
+            if (trimmed.includes('{')) inAtRule++;
+            continue;
+        }
+
+        // Any other @-rule — pass through
+        if (trimmed.startsWith('@')) {
+            lines.push(line);
+            continue;
+        }
+
+        // Track braces for @-rule nesting
+        if (trimmed === '}') {
+            if (inAtRule > 0) inAtRule--;
+            lines.push(line);
+            continue;
+        }
+
+        // Property lines (inside rule block) — pass through
+        if (trimmed.includes(':') && !trimmed.includes('{')) {
+            lines.push(line);
+            continue;
+        }
+
+        // Selector line — prefix with scope
+        if (trimmed.includes('{')) {
+            const selectorPart = trimmed.slice(0, trimmed.indexOf('{')).trim();
+            const rest = trimmed.slice(trimmed.indexOf('{'));
+
+            const scopedSelectors = selectorPart.split(',').map(sel => {
+                sel = sel.trim();
+                if (!sel) return sel;
+                // :root → scope directly
+                if (sel === ':root') return scope;
+                // html, body → scope directly 
+                if (sel === 'html' || sel === 'body') return scope;
+                // Already starts with scope → skip
+                if (sel.startsWith('[data-page')) return sel;
+                // Prefix: .foo → [data-page="/x"] .foo
+                return `${scope} ${sel}`;
+            }).join(', ');
+
+            lines.push(`${scopedSelectors} ${rest}`);
+            continue;
+        }
+
+        // Fallback — pass through
+        lines.push(line);
+    }
+
+    return lines.join('\n');
 }
 
 // ─── Static Asset Builder ───────────────────────────────────────────────────────

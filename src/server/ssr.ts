@@ -13,6 +13,7 @@
  */
 
 import { Fragment, type VNode, type Child, type Component } from '../client/types';
+import { Head } from './head';
 
 // ─── HTML Escaping ─────────────────────────────────────────────────────────────
 
@@ -52,6 +53,11 @@ export function renderToString(vnode: VNode | Child): string {
 
     // Component — execute and render result
     if (typeof type === 'function') {
+        // Head component: call for side-channel collection, render nothing in body
+        if (type === Head) {
+            (type as any)(props);
+            return '';
+        }
         const result = (type as Component)(props);
         return renderToString(result);
     }

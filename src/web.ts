@@ -42,4 +42,7 @@ export {
   frontendApp,
   spa,
   start,
+
+  // Head component
+  Head,
 } from "./server";

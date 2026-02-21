@@ -14,6 +14,12 @@ export interface Route {
     regex: RegExp;
     /** Layout file paths from root to page (for nested layouts) */
     layouts: string[];
+    /** Nearest error.tsx — walks up from page dir to root */
+    errorPath?: string;
+    /** Nearest loading.tsx — walks up from page dir to root */
+    loadingPath?: string;
+    /** Middleware file paths from root to page (like layouts) */
+    middlewares: string[];
     /** Route type: 'page' or 'api' */
     type: 'page' | 'api';
 }
@@ -102,6 +108,60 @@ function findLayouts(pageFilePath: string, appDir: string): string[] {
 }
 
 /**
+ * Find the nearest error.tsx by walking up from page dir to appDir.
+ * Returns the first found (most specific) or undefined.
+ */
+function findErrorBoundary(pageFilePath: string, appDir: string): string | undefined {
+    let currentDir = path.dirname(pageFilePath);
+    while (currentDir.startsWith(appDir) || currentDir === appDir) {
+        for (const ext of ['.tsx', '.ts', '.jsx', '.js']) {
+            const errorPath = path.join(currentDir, `error${ext}`);
+            if (existsSync(errorPath)) return errorPath;
+        }
+        if (currentDir === appDir) break;
+        currentDir = path.dirname(currentDir);
+    }
+    return undefined;
+}
+
+/**
+ * Find the nearest loading.tsx by walking up from page dir to appDir.
+ */
+function findLoadingComponent(pageFilePath: string, appDir: string): string | undefined {
+    let currentDir = path.dirname(pageFilePath);
+    while (currentDir.startsWith(appDir) || currentDir === appDir) {
+        for (const ext of ['.tsx', '.ts', '.jsx', '.js']) {
+            const loadingPath = path.join(currentDir, `loading${ext}`);
+            if (existsSync(loadingPath)) return loadingPath;
+        }
+        if (currentDir === appDir) break;
+        currentDir = path.dirname(currentDir);
+    }
+    return undefined;
+}
+
+/**
+ * Find all middleware.ts files from appDir to the page's directory.
+ * Collected root→page (outermost first), like layouts.
+ */
+function findMiddlewares(pageFilePath: string, appDir: string): string[] {
+    const middlewares: string[] = [];
+    let currentDir = path.dirname(pageFilePath);
+    while (currentDir.startsWith(appDir) || currentDir === appDir) {
+        for (const ext of ['.ts', '.tsx', '.js']) {
+            const mwPath = path.join(currentDir, `middleware${ext}`);
+            if (existsSync(mwPath)) {
+                middlewares.unshift(mwPath); // root first
+                break; // one per directory
+            }
+        }
+        if (currentDir === appDir) break;
+        currentDir = path.dirname(currentDir);
+    }
+    return middlewares;
+}
+
+/**
  * Recursively discover all page.tsx/page.ts and route.ts files in app directory
  */
 export function discoverRoutes(appDir: string): Route[] {
@@ -121,6 +181,9 @@ export function discoverRoutes(appDir: string): Route[] {
                     const { pattern, paramNames } = filePathToPattern(fullPath, appDir);
                     const regex = patternToRegex(pattern);
                     const layouts = findLayouts(fullPath, appDir);
+                    const errorPath = findErrorBoundary(fullPath, appDir);
+                    const loadingPath = findLoadingComponent(fullPath, appDir);
+                    const middlewares = findMiddlewares(fullPath, appDir);
 
                     routes.push({
                         filePath: fullPath,
@@ -129,12 +192,16 @@ export function discoverRoutes(appDir: string): Route[] {
                         paramNames,
                         regex,
                         layouts,
+                        errorPath,
+                        loadingPath,
+                        middlewares,
                         type: 'page',
                     });
                 } else if (entry.match(/^route\.(tsx?|js)$/)) {
                     // API route
                     const { pattern, paramNames } = filePathToPattern(fullPath, appDir);
                     const regex = patternToRegex(pattern);
+                    const middlewares = findMiddlewares(fullPath, appDir);
 
                     routes.push({
                         filePath: fullPath,
@@ -143,6 +210,7 @@ export function discoverRoutes(appDir: string): Route[] {
                         paramNames,
                         regex,
                         layouts: [],
+                        middlewares,
                         type: 'api',
                     });
                 }
