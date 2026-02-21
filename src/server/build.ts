@@ -11,8 +11,10 @@ import { existsSync, readFileSync } from "fs";
 import autoprefixer from "autoprefixer";
 import postcss from "postcss";
 import tailwind from "@tailwindcss/postcss";
+import { createMeasure } from 'measure-fn';
 
 const isDev = process.env.NODE_ENV !== "production";
+const { measure: buildMeasure } = createMeasure('build');
 
 // ─── In-Memory Caches ──────────────────────────────────────────────────────────
 
@@ -115,7 +117,7 @@ export async function buildClientScript(clientPath: string): Promise<string> {
     const existing = buildInFlight.get(clientPath);
     if (existing) return existing;
 
-    const promise = _buildClientScriptImpl(clientPath);
+    const promise = buildMeasure(`Client: ${path.basename(clientPath)}`, () => _buildClientScriptImpl(clientPath));
     buildInFlight.set(clientPath, promise);
     try {
         return await promise;
@@ -255,7 +257,7 @@ export async function buildScript(filePath: string, allExternal = false): Promis
     const existing = buildInFlight.get(filePath);
     if (existing) return existing;
 
-    const promise = _buildScriptImpl(absolutePath, filePath, allExternal);
+    const promise = buildMeasure(`Script: ${path.basename(filePath)}`, () => _buildScriptImpl(absolutePath, filePath, allExternal));
     buildInFlight.set(filePath, promise);
     try {
         return await promise;
@@ -349,7 +351,7 @@ export async function buildStyle(filePath: string): Promise<string> {
     const existing = buildInFlight.get(filePath);
     if (existing) return existing;
 
-    const promise = _buildStyleImpl(absolutePath, filePath);
+    const promise = buildMeasure(`Style: ${path.basename(filePath)}`, () => _buildStyleImpl(absolutePath, filePath));
     buildInFlight.set(filePath, promise);
     try {
         return await promise;
@@ -441,7 +443,7 @@ export async function buildScopedStyle(filePath: string, routePattern: string): 
     const existing = buildInFlight.get(cacheKey);
     if (existing) return existing;
 
-    const promise = _buildScopedStyleImpl(filePath, routePattern, cacheKey);
+    const promise = buildMeasure(`Scoped CSS: ${routePattern}`, () => _buildScopedStyleImpl(filePath, routePattern, cacheKey));
     buildInFlight.set(cacheKey, promise);
     try {
         return await promise;
@@ -606,7 +608,7 @@ export async function buildAsset(file?: BunFile): Promise<string> {
     const existing = buildInFlight.get(filePath);
     if (existing) return existing;
 
-    const promise = _buildAssetImpl(file, filePath);
+    const promise = buildMeasure(`Asset: ${path.basename(filePath)}`, () => _buildAssetImpl(file, filePath));
     buildInFlight.set(filePath, promise);
     try {
         return await promise;

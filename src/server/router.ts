@@ -1,5 +1,6 @@
 import { readdirSync, statSync, existsSync } from 'fs';
 import path from 'path';
+import { measureSync } from 'measure-fn';
 
 export interface Route {
     /** File path to the page component */
@@ -165,80 +166,82 @@ function findMiddlewares(pageFilePath: string, appDir: string): string[] {
  * Recursively discover all page.tsx/page.ts and route.ts files in app directory
  */
 export function discoverRoutes(appDir: string): Route[] {
-    const routes: Route[] = [];
+    return measureSync('Discover routes', () => {
+        const routes: Route[] = [];
 
-    function scanDir(dir: string) {
-        try {
-            const entries = readdirSync(dir);
+        function scanDir(dir: string) {
+            try {
+                const entries = readdirSync(dir);
 
-            for (const entry of entries) {
-                const fullPath = path.join(dir, entry);
-                const stats = statSync(fullPath);
+                for (const entry of entries) {
+                    const fullPath = path.join(dir, entry);
+                    const stats = statSync(fullPath);
 
-                if (stats.isDirectory()) {
-                    scanDir(fullPath);
-                } else if (entry.match(/^page\.(tsx?|jsx?)$/)) {
-                    const { pattern, paramNames } = filePathToPattern(fullPath, appDir);
-                    const regex = patternToRegex(pattern);
-                    const layouts = findLayouts(fullPath, appDir);
-                    const errorPath = findErrorBoundary(fullPath, appDir);
-                    const loadingPath = findLoadingComponent(fullPath, appDir);
-                    const middlewares = findMiddlewares(fullPath, appDir);
+                    if (stats.isDirectory()) {
+                        scanDir(fullPath);
+                    } else if (entry.match(/^page\.(tsx?|jsx?)$/)) {
+                        const { pattern, paramNames } = filePathToPattern(fullPath, appDir);
+                        const regex = patternToRegex(pattern);
+                        const layouts = findLayouts(fullPath, appDir);
+                        const errorPath = findErrorBoundary(fullPath, appDir);
+                        const loadingPath = findLoadingComponent(fullPath, appDir);
+                        const middlewares = findMiddlewares(fullPath, appDir);
 
-                    routes.push({
-                        filePath: fullPath,
-                        pattern,
-                        pathname: pattern,
-                        paramNames,
-                        regex,
-                        layouts,
-                        errorPath,
-                        loadingPath,
-                        middlewares,
-                        type: 'page',
-                    });
-                } else if (entry.match(/^route\.(tsx?|js)$/)) {
-                    // API route
-                    const { pattern, paramNames } = filePathToPattern(fullPath, appDir);
-                    const regex = patternToRegex(pattern);
-                    const middlewares = findMiddlewares(fullPath, appDir);
+                        routes.push({
+                            filePath: fullPath,
+                            pattern,
+                            pathname: pattern,
+                            paramNames,
+                            regex,
+                            layouts,
+                            errorPath,
+                            loadingPath,
+                            middlewares,
+                            type: 'page',
+                        });
+                    } else if (entry.match(/^route\.(tsx?|js)$/)) {
+                        // API route
+                        const { pattern, paramNames } = filePathToPattern(fullPath, appDir);
+                        const regex = patternToRegex(pattern);
+                        const middlewares = findMiddlewares(fullPath, appDir);
 
-                    routes.push({
-                        filePath: fullPath,
-                        pattern,
-                        pathname: pattern,
-                        paramNames,
-                        regex,
-                        layouts: [],
-                        middlewares,
-                        type: 'api',
-                    });
+                        routes.push({
+                            filePath: fullPath,
+                            pattern,
+                            pathname: pattern,
+                            paramNames,
+                            regex,
+                            layouts: [],
+                            middlewares,
+                            type: 'api',
+                        });
+                    }
                 }
+            } catch (error: any) {
+                // Directory doesn't exist or can't be read
+                console.warn(`Could not scan directory ${dir}:`, error.message);
             }
-        } catch (error: any) {
-            // Directory doesn't exist or can't be read
-            console.warn(`Could not scan directory ${dir}:`, error.message);
         }
-    }
 
-    scanDir(appDir);
+        scanDir(appDir);
 
-    // Sort routes by specificity (more specific routes first)
-    // Static routes before dynamic routes
-    routes.sort((a, b) => {
-        const aStatic = !a.pattern.includes(':');
-        const bStatic = !b.pattern.includes(':');
+        // Sort routes by specificity (more specific routes first)
+        // Static routes before dynamic routes
+        routes.sort((a, b) => {
+            const aStatic = !a.pattern.includes(':');
+            const bStatic = !b.pattern.includes(':');
 
-        if (aStatic && !bStatic) return -1;
-        if (!aStatic && bStatic) return 1;
+            if (aStatic && !bStatic) return -1;
+            if (!aStatic && bStatic) return 1;
 
-        // If both static or both dynamic, sort by depth (deeper first)
-        const aDepth = a.pattern.split('/').length;
-        const bDepth = b.pattern.split('/').length;
-        return bDepth - aDepth;
-    });
+            // If both static or both dynamic, sort by depth (deeper first)
+            const aDepth = a.pattern.split('/').length;
+            const bDepth = b.pattern.split('/').length;
+            return bDepth - aDepth;
+        });
 
-    return routes;
+        return routes;
+    }) ?? [];
 }
 
 /**

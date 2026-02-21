@@ -8,7 +8,6 @@
 import path from "path";
 import { existsSync } from "fs";
 import { dedent } from "ts-dedent";
-import { measure } from 'measure-fn';
 import { discoverRoutes, matchRoute } from "./router";
 import { createElement } from "../client/render";
 import { renderToString } from "./ssr";
@@ -73,12 +72,7 @@ export async function frontendApp(options: FrontendAppOptions): Promise<string> 
     </script>
   `;
 
-    let scriptVirtualPath = '';
-    if (rebuild) {
-        scriptVirtualPath = await measure(`Build script: ${scriptPath}`, () => buildScript(scriptPath)) ?? '';
-    } else {
-        scriptVirtualPath = await measure(`Build script: ${scriptPath}`, () => buildScript(scriptPath)) ?? '';
-    }
+    let scriptVirtualPath = await buildScript(scriptPath) ?? '';
 
     if (!scriptVirtualPath) throw `failed to build script`;
 
@@ -298,7 +292,7 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
         })();
     }
 
-    return async (req: Request, measure: any) => {
+    return async (req: Request, m: any) => {
         const url = new URL(req.url);
         const pathname = url.pathname;
 
@@ -331,36 +325,40 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
             // Each middleware can short-circuit by returning a Response.
             if (match.route.middlewares.length > 0) {
                 for (const mwPath of match.route.middlewares) {
-                    const mwModule = await import(mwPath);
-                    const mwFn = mwModule.default || mwModule.middleware;
-                    if (typeof mwFn === 'function') {
-                        const mwResult = await mwFn(req, { params: match.params, route: match.route });
-                        // If middleware returns a Response, short-circuit
-                        if (mwResult instanceof Response) return mwResult;
-                    }
+                    const mwResult = await m(`Middleware: ${path.basename(path.dirname(mwPath))}`, async () => {
+                        const mwModule = await import(mwPath);
+                        const mwFn = mwModule.default || mwModule.middleware;
+                        if (typeof mwFn === 'function') {
+                            return await mwFn(req, { params: match.params, route: match.route });
+                        }
+                    });
+                    // If middleware returns a Response, short-circuit
+                    if (mwResult instanceof Response) return mwResult;
                 }
             }
 
             // Handle API routes
             if (match.route.type === 'api') {
-                const apiModule = await import(match.route.filePath);
-                const method = req.method.toUpperCase();
-                const handler = apiModule[method] || apiModule.default;
+                return await m(`API: ${match.route.pattern}`, async () => {
+                    const apiModule = await import(match.route.filePath);
+                    const method = req.method.toUpperCase();
+                    const handler = apiModule[method] || apiModule.default;
 
-                if (!handler) {
-                    return new Response('Method Not Allowed', { status: 405 });
-                }
+                    if (!handler) {
+                        return new Response('Method Not Allowed', { status: 405 });
+                    }
 
-                const response = await handler(req, { params: match.params });
-                return response instanceof Response
-                    ? response
-                    : new Response(JSON.stringify(response), {
-                        headers: { 'Content-Type': 'application/json' }
-                    });
+                    const response = await handler(req, { params: match.params });
+                    return response instanceof Response
+                        ? response
+                        : new Response(JSON.stringify(response), {
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                });
             }
 
             // Handle Page routes
-            const pageModule = await import(match.route.filePath);
+            const pageModule = await m('Import page', () => import(match.route.filePath), (e: any) => { throw e; });
             const PageComponent = pageModule.default || pageModule.Page;
 
             if (!PageComponent) {
@@ -380,7 +378,7 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
             }
 
             resetHead(); // Clear head elements from previous render
-            const html = renderToString(tree);
+            const html = await m('SSR renderToString', () => renderToString(tree), (e: any) => { throw e; });
             const headElements = getHeadElements(); // Collect <Head> children
 
             let stylesVirtualPath = '';

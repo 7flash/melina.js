@@ -23,6 +23,7 @@
  */
 
 import { builtAssets } from "./build";
+import { measure } from 'measure-fn';
 import type { Route } from "./router";
 
 // ─── Pre-rendered Page Cache ────────────────────────────────────────────────────
@@ -82,34 +83,37 @@ export async function prerender(
     routes: Route[],
     renderRoute: (route: Route) => Promise<string>,
 ): Promise<number> {
-    let count = 0;
+    return await measure('SSG pre-render', async (m) => {
+        let count = 0;
 
-    for (const route of routes) {
-        // Skip API routes
-        if (route.type === 'api') continue;
+        for (const route of routes) {
+            // Skip API routes
+            if (route.type === 'api') continue;
 
-        // Skip dynamic routes (have parameters)
-        if (route.paramNames.length > 0) continue;
+            // Skip dynamic routes (have parameters)
+            if (route.paramNames.length > 0) continue;
 
-        // Check if page opts in to SSG
-        try {
-            const mod = await import(route.filePath);
-            const ssgConfig = mod.ssg;
+            // Check if page opts in to SSG
+            try {
+                const mod = await import(route.filePath);
+                const ssgConfig = mod.ssg;
 
-            if (!ssgConfig) continue; // Page must export `ssg = true` or `ssg = { revalidate: N }`
+                if (!ssgConfig) continue; // Page must export `ssg = true` or `ssg = { revalidate: N }`
 
-            const revalidateMs = typeof ssgConfig === 'object' ? (ssgConfig.revalidate ?? 0) * 1000 : undefined;
+                const revalidateMs = typeof ssgConfig === 'object' ? (ssgConfig.revalidate ?? 0) * 1000 : undefined;
 
-            console.log(`   ⚡ Pre-rendering ${route.pattern}...`);
-            const html = await renderRoute(route);
-            setPrerendered(route.pattern, html, revalidateMs);
-            count++;
-        } catch (e: any) {
-            console.warn(`   ⚠ Failed to pre-render ${route.pattern}:`, e.message);
+                const html = await m(`Route: ${route.pattern}`, () => renderRoute(route));
+                if (html) {
+                    setPrerendered(route.pattern, html, revalidateMs);
+                    count++;
+                }
+            } catch (e: any) {
+                console.warn(`   ⚠ Failed to pre-render ${route.pattern}:`, e.message);
+            }
         }
-    }
 
-    return count;
+        return count;
+    }) ?? 0;
 }
 
 /**
