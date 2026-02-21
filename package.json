@@ -58,12 +58,13 @@
   "sideEffects": false,
   "devDependencies": {
     "@types/bun": "latest",
-    "jsdom": "^28.1.0"
+    "jsdom": "^28.1.0",
+    "melina": "link:."
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.10",
     "autoprefixer": "^10.4.21",
-    "measure-fn": "^2.0.0",
+    "measure-fn": "^3.3.0",
     "postcss": "^8.5.6",
     "ts-dedent": "^2.2.0"
   }

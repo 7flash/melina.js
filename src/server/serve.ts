@@ -116,8 +116,10 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
                     });
                 }
 
-                // Handle request with user handler — measure wraps the call
-                const response = await measure(
+                // Handle request with user handler — measure.assert observes timing,
+                // handler's own try/catch handles errors. If handler itself throws
+                // unexpectedly, assert re-throws with .cause = original error.
+                const response = await measure.assert(
                     { label: `${req.method} ${req.url}`, requestId },
                     async (m: MeasureFn) => {
                         return await handler(req, m);
@@ -164,13 +166,6 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
                     });
                 }
 
-                // Null guard — measure() may return null on error
-                if (response === null || response === undefined) {
-                    return new Response("Internal Server Error", {
-                        status: 500,
-                        headers: { "Content-Type": "text/plain" },
-                    });
-                }
 
                 return new Response(JSON.stringify(response), {
                     headers: { "Content-Type": "application/json" },

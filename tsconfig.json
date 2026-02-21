@@ -9,7 +9,7 @@
     "module": "ESNext",
     "moduleDetection": "force",
     "jsx": "react-jsx",
-    "jsxImportSource": "./src/client",
+    "jsxImportSource": "melina/client",
     "allowJs": true,
     // Bundler mode
     "moduleResolution": "bundler",

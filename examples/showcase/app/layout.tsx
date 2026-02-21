@@ -7,6 +7,11 @@ const navItems = [
     { href: '/items/alpha', icon: '🔗', label: 'Dynamic Routes' },
     { href: '/streaming', icon: '📡', label: 'Streaming', section: 'Advanced' },
     { href: '/stress', icon: '🔥', label: 'Server Throughput' },
+    { href: '/features/head', icon: '🧠', label: '<Head> Component', section: 'New Features' },
+    { href: '/features/error', icon: '💥', label: 'Error Boundaries' },
+    { href: '/features/middleware', icon: '🛡️', label: 'Middleware' },
+    { href: '/features/scoped-css', icon: '🎨', label: 'Scoped CSS' },
+    { href: '/features/ssg', icon: '⚡', label: 'SSG' },
 ];
 
 export default function RootLayout({ children }: { children: any }) {
