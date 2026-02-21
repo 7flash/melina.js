@@ -116,13 +116,24 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
                     });
                 }
 
-                // Handle request with user handler — measure.assert observes timing,
-                // handler's own try/catch handles errors. If handler itself throws
-                // unexpectedly, assert re-throws with .cause = original error.
-                const response = await measure.assert(
+                // Handle request — measure observes timing,
+                // onError provides a fallback Response if handler throws.
+                const response = await measure(
                     { label: `${req.method} ${req.url}`, requestId },
                     async (m: MeasureFn) => {
                         return await handler(req, m);
+                    },
+                    (error: any) => {
+                        console.error("[Server Error]", error);
+                        const errorDetails = error?.message ?? String(error);
+                        const stackTrace = error?.stack ?? 'No stack trace available';
+                        const body = isDev
+                            ? `<pre style="font-family:monospace;background:#fff1f1;padding:20px;color:#d92626">${errorDetails}\n\n${stackTrace}</pre>`
+                            : "Internal Server Error";
+                        return new Response(body, {
+                            status: 500,
+                            headers: { "Content-Type": "text/html", "Cache-Control": "no-store" },
+                        });
                     }
                 );
 
