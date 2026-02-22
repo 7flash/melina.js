@@ -3,6 +3,7 @@
 **Bun-native web framework — server-rendered JSX + lightweight client runtime**
 
 [![npm version](https://img.shields.io/npm/v/melina)](https://www.npmjs.com/package/melina)
+[![Tests](https://github.com/7flash/melina.js/actions/workflows/test.yml/badge.svg)](https://github.com/7flash/melina.js/actions/workflows/test.yml)
 [![Bun](https://img.shields.io/badge/runtime-Bun-f9f1e1)](https://bun.sh)
 
 Melina.js is a web framework built for Bun. Pages are **server-rendered JSX** — write components that run on the server, render to HTML, and arrive at the browser instantly. Client interactivity is added via **mount scripts** — small `.client.tsx` files that hydrate specific parts of the page with a zero-dependency ~2KB VDOM runtime.
@@ -390,18 +391,32 @@ Melina is intentionally small. We don't add features unless they solve a real pr
 
 The comparison table on the SSG page shows three strategies: SSR, Cached SSR, and SSG. **Cached SSR does not exist as a framework feature** — and we don't plan to add it.
 
-SSG already handles the "render once, serve many" case. The difference between Cached SSR (cache the HTML string after first request) and SSG (cache at startup) is trivial in practice:
+The pitch for Cached SSR is: "Render on the first request, cache the HTML, serve the cache for subsequent requests until TTL expires." But SSG with revalidation already does this — better:
 
-| | Cached SSR | SSG |
+```tsx
+// This is all you need. No Cached SSR required.
+export const ssg = { revalidate: 60 }; // re-render every 60 seconds
+
+export default function PricingPage() {
+    const prices = db.getPrices(); // fresh data on each revalidation
+    return <main><PriceTable prices={prices} /></main>;
+}
+```
+
+Here's the concrete comparison:
+
+| | Cached SSR | SSG with `revalidate` |
 |---|---|---|
-| When cached | First request | Startup |
-| Storage | JS string (GC'd) | ArrayBuffer (zero-copy) |
-| First visitor penalty | Full render | None |
-| Invalidation | TTL | TTL or restart |
+| When cached | After first visitor requests | At startup (before any visitor) |
+| First visitor | **Pays full render cost** | **Instant response** |
+| Storage | JS string in memory (GC pressure) | ArrayBuffer (zero-copy, no GC) |
+| Cache refresh | Next request after TTL expires triggers re-render | Background revalidation on timer |
+| Invalidation | TTL only | TTL via `revalidate`, or manual via `clearSSGCache()` |
+| Cold start | Slow (uncached) | Fast (pre-rendered) |
 
-SSG is strictly better: the first visitor gets an instant response, the HTML is stored as an ArrayBuffer (no per-response string allocation), and invalidation can be automatic via `ssg = { revalidate: N }` or programmatic via `clearSSGCache()`.
+The critical difference: **Cached SSR penalizes the first visitor** with a full server render. SSG pre-renders at startup, so every visitor — including the first — gets an instant response. The `revalidate` option handles staleness automatically, and `clearSSGCache()` handles on-demand invalidation (e.g., after a webhook from your CMS).
 
-Adding Cached SSR would mean two caching systems that do nearly the same thing. SSG covers the use case. If you need dynamic data on every request, use SSR. If you want caching, use SSG. There's no meaningful middle ground.
+If you need truly dynamic, per-request data (user-specific content, authenticated pages), use SSR. If you want caching, use SSG with `revalidate`. There's no use case where "SSR + cache the response" beats "SSG + periodic revalidation" — SSG is strictly better because it eliminates the cold-start penalty entirely.
 
 #### Why no built-in hot reload
 
