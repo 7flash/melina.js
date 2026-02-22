@@ -133,19 +133,18 @@ export async function POST(req: Request) {
             </div>
 
             <div className="demo-card" style={{ marginBottom: '24px' }}>
-                <h3 className="demo-card-title">📊 Benchmark: SSG vs SSR Response Times</h3>
+                <h3 className="demo-card-title">📊 Live Benchmark: SSG vs SSR vs Cached SSR</h3>
                 <p className="demo-card-description">
-                    Use the <code>/api/benchmark-ssg</code> endpoint to compare real response times.
-                    Open your browser console and run:
+                    Runs 100 iterations of each rendering strategy and compares response times.
+                    The chart below auto-loads when you visit this page.
                 </p>
-                <div className="code-block">
-                    {`// Run this in browser console:
-const results = await fetch('/api/benchmark-ssg').then(r => r.json());
-console.table(results);
-
-// Or use curl:
-// curl http://localhost:3000/api/benchmark-ssg | jq`}
-                </div>
+                <div id="benchmark-chart" style={{
+                    marginTop: '16px',
+                    padding: '20px',
+                    background: 'rgba(0, 0, 0, 0.2)',
+                    borderRadius: '12px',
+                    border: '1px solid var(--color-border)',
+                }}></div>
             </div>
 
             <div className="demo-card">
