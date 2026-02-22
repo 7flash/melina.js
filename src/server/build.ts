@@ -117,7 +117,7 @@ export async function buildClientScript(clientPath: string): Promise<string> {
     const existing = buildInFlight.get(clientPath);
     if (existing) return existing;
 
-    const promise = buildMeasure(`Client: ${path.basename(clientPath)}`, () => _buildClientScriptImpl(clientPath));
+    const promise = buildMeasure(`Client: ${path.basename(clientPath)}`, () => _buildClientScriptImpl(clientPath), (e: any) => { throw e; }) as Promise<string>;
     buildInFlight.set(clientPath, promise);
     try {
         return await promise;
@@ -257,7 +257,7 @@ export async function buildScript(filePath: string, allExternal = false): Promis
     const existing = buildInFlight.get(filePath);
     if (existing) return existing;
 
-    const promise = buildMeasure(`Script: ${path.basename(filePath)}`, () => _buildScriptImpl(absolutePath, filePath, allExternal));
+    const promise = buildMeasure(`Script: ${path.basename(filePath)}`, () => _buildScriptImpl(absolutePath, filePath, allExternal), (e: any) => { throw e; }) as Promise<string>;
     buildInFlight.set(filePath, promise);
     try {
         return await promise;
@@ -351,7 +351,7 @@ export async function buildStyle(filePath: string): Promise<string> {
     const existing = buildInFlight.get(filePath);
     if (existing) return existing;
 
-    const promise = buildMeasure(`Style: ${path.basename(filePath)}`, () => _buildStyleImpl(absolutePath, filePath));
+    const promise = buildMeasure(`Style: ${path.basename(filePath)}`, () => _buildStyleImpl(absolutePath, filePath), (e: any) => { throw e; }) as Promise<string>;
     buildInFlight.set(filePath, promise);
     try {
         return await promise;
@@ -443,7 +443,7 @@ export async function buildScopedStyle(filePath: string, routePattern: string): 
     const existing = buildInFlight.get(cacheKey);
     if (existing) return existing;
 
-    const promise = buildMeasure(`Scoped CSS: ${routePattern}`, () => _buildScopedStyleImpl(filePath, routePattern, cacheKey));
+    const promise = buildMeasure(`Scoped CSS: ${routePattern}`, () => _buildScopedStyleImpl(filePath, routePattern, cacheKey), (e: any) => { throw e; }) as Promise<string>;
     buildInFlight.set(cacheKey, promise);
     try {
         return await promise;
@@ -608,7 +608,7 @@ export async function buildAsset(file?: BunFile): Promise<string> {
     const existing = buildInFlight.get(filePath);
     if (existing) return existing;
 
-    const promise = buildMeasure(`Asset: ${path.basename(filePath)}`, () => _buildAssetImpl(file, filePath));
+    const promise = buildMeasure(`Asset: ${path.basename(filePath)}`, () => _buildAssetImpl(file, filePath), (e: any) => { throw e; }) as Promise<string>;
     buildInFlight.set(filePath, promise);
     try {
         return await promise;
