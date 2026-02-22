@@ -361,7 +361,7 @@ npx melina start                 # Start dev server
 Run the built-in showcase to see every feature in action:
 
 ```bash
-git clone https://github.com/Mements/melina.js.git
+git clone https://github.com/7flash/melina.js.git
 cd melina.js
 bun install
 bun run examples/showcase/server.ts
@@ -413,7 +413,7 @@ A file watcher would add:
 - A WebSocket server for browser refresh
 - Edge cases around partial rebuilds, circular imports, and CSS hot replacement
 
-The tradeoff isn't worth it. Bun starts fast enough that `Ctrl+C → ↑ → Enter` is near-instant. Tools like [bgr](https://github.com/7flash/bgr) can watch and auto-restart for you externally — keeping that concern out of the framework.
+The tradeoff isn't worth it. Bun starts fast enough that `Ctrl+C → ↑ → Enter` is near-instant. Tools like [bgrun](https://github.com/7flash/bgrun) can watch and auto-restart for you externally — keeping that concern out of the framework.
 
 We'd rather have a small, correct codebase than a large one with a fragile file watcher.
 
@@ -469,4 +469,4 @@ bun test
 
 ## License
 
-MIT © [Mements](https://github.com/Mements)
+MIT © [7flash](https://github.com/7flash)

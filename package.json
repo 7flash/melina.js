@@ -33,13 +33,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Mements/melina.js"
+    "url": "https://github.com/7flash/melina.js"
   },
   "author": {
     "name": "Melina.js Contributors"
   },
-  "bugs": "https://github.com/Mements/melina.js/issues",
-  "homepage": "https://github.com/Mements/melina.js#readme",
+  "bugs": "https://github.com/7flash/melina.js/issues",
+  "homepage": "https://github.com/7flash/melina.js#readme",
   "license": "MIT",
   "keywords": [
     "bun",
