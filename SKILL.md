@@ -7,7 +7,7 @@ description: Bun-native web framework with file routing. Use this for building s
 
 Melina.js is a Bun-native web framework. Pages are server-rendered JSX, client interactivity is added via **mount scripts** — `.client.tsx` files compiled to lightweight VNodes with a ~2KB reconciler runtime.
 
-**Current version: 2.3.0**
+**Current version: 2.3.1**
 
 ---
 
