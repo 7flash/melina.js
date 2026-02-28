@@ -24,7 +24,81 @@ export const builtAssets: Record<string, { content: ArrayBuffer; contentType: st
 // Dev-mode mtime cache — only rebuild when source files actually change.
 // Without this, every navigation triggers full PostCSS+Tailwind + Bun builds,
 // which crashes the server after a few rapid navigations on Windows.
+//
+// IMPORTANT: For bundled scripts (client scripts), we track the MAX mtime
+// across the entire dependency tree, not just the entry file. This ensures
+// editing any imported module triggers a rebuild.
 const devMtimeCache = new Map<string, { mtime: number; outputPath: string }>();
+
+/**
+ * Recursively scan all local imports from an entry file and return
+ * the maximum mtime across the entire dependency tree.
+ * Uses Bun.Transpiler to extract imports, then resolves relative paths.
+ * Non-local imports (node_modules, bare specifiers) are skipped.
+ */
+function getTreeMtime(entryPath: string): number {
+    const visited = new Set<string>();
+    let maxMtime = 0;
+
+    function walk(filePath: string) {
+        const resolved = path.resolve(filePath);
+        if (visited.has(resolved)) return;
+        visited.add(resolved);
+
+        try {
+            const mtime = Bun.file(resolved).lastModified;
+            if (mtime > maxMtime) maxMtime = mtime;
+        } catch {
+            return; // File doesn't exist or can't be read
+        }
+
+        // Extract imports using Bun's fast transpiler
+        try {
+            const source = readFileSync(resolved, 'utf-8');
+            const transpiler = new Bun.Transpiler({ loader: getLoaderForExt(path.extname(resolved)) });
+            const imports = transpiler.scanImports(source);
+            const dir = path.dirname(resolved);
+
+            for (const imp of imports) {
+                // Only follow relative imports (local project files)
+                if (!imp.path.startsWith('.')) continue;
+
+                // Try resolving with common extensions
+                const candidates = [
+                    imp.path,
+                    imp.path + '.ts',
+                    imp.path + '.tsx',
+                    imp.path + '.js',
+                    imp.path + '.jsx',
+                    imp.path + '/index.ts',
+                    imp.path + '/index.tsx',
+                ];
+
+                for (const candidate of candidates) {
+                    const full = path.resolve(dir, candidate);
+                    if (existsSync(full)) {
+                        walk(full);
+                        break;
+                    }
+                }
+            }
+        } catch {
+            // If transpiler fails, just use the file's own mtime
+        }
+    }
+
+    walk(entryPath);
+    return maxMtime;
+}
+
+function getLoaderForExt(ext: string): 'ts' | 'tsx' | 'js' | 'jsx' {
+    switch (ext) {
+        case '.tsx': return 'tsx';
+        case '.jsx': return 'jsx';
+        case '.js': return 'js';
+        default: return 'ts';
+    }
+}
 
 // Build deduplication — prevent concurrent builds of the same file
 const buildInFlight = new Map<string, Promise<string>>();
@@ -140,12 +214,12 @@ async function _buildClientScriptImpl(clientPath: string): Promise<string> {
         return buildCache[clientPath].outputPath;
     }
 
-    // Dev: use mtime cache — skip rebuild if source hasn't changed
+    // Dev: use tree mtime cache — skip rebuild if NO file in the dependency tree has changed
     if (isDev) {
         try {
-            const mtime = Bun.file(clientPath).lastModified;
+            const treeMtime = getTreeMtime(clientPath);
             const cached = devMtimeCache.get(clientPath);
-            if (cached && cached.mtime === mtime) {
+            if (cached && cached.mtime === treeMtime) {
                 return cached.outputPath;
             }
         } catch { /* stat failed, rebuild */ }
@@ -222,11 +296,11 @@ async function _buildClientScriptImpl(clientPath: string): Promise<string> {
     const outputPath = `/${path.basename(mainOutput.path)}`;
     buildCache[clientPath] = { outputPath, content: await mainOutput.arrayBuffer() };
 
-    // Update mtime cache for dev mode
+    // Update tree mtime cache for dev mode
     if (isDev) {
         try {
-            const mtime = Bun.file(clientPath).lastModified;
-            devMtimeCache.set(clientPath, { mtime, outputPath });
+            const treeMtime = getTreeMtime(clientPath);
+            devMtimeCache.set(clientPath, { mtime: treeMtime, outputPath });
         } catch { /* ok */ }
     }
 
