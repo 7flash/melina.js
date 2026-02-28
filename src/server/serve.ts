@@ -40,7 +40,7 @@ function generateRequestId(): string {
  * Automatically determines port or unix socket from BUN_PORT env var or CLI arg.
  * Handles cleanup and graceful shutdown automatically.
  */
-export async function serve(handler: Handler, options?: { port?: number; unix?: string }) {
+export async function serve(handler: Handler, options?: { port?: number; unix?: string; websocket?: any }) {
     // Automatic detection logic
     let port: number | undefined;
     let unix: string | undefined;
@@ -91,8 +91,11 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
         };
     }
 
+    const hasWebSocket = !!options?.websocket;
+
     const args: any = {
         idleTimeout: 0,
+        reusePort: true,
         development: isDev,
         async fetch(req: Request) {
             let requestId = req.headers.get("X-Request-ID");
@@ -104,6 +107,14 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
             try {
                 const url = new URL(req.url);
                 const pathname = url.pathname;
+
+                // WebSocket upgrade — when a websocket handler is configured,
+                // automatically upgrade requests with the Upgrade header
+                if (hasWebSocket && req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+                    const upgraded = server.upgrade(req, { data: { url, pathname } });
+                    if (upgraded) return undefined as any; // Bun handles the response
+                    return new Response('WebSocket upgrade failed', { status: 400 });
+                }
 
                 // Check for built assets in memory first
                 if (builtAssets[pathname]) {
@@ -228,18 +239,25 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
         },
     };
 
+    // Pass through WebSocket handler if provided
+    if (options?.websocket) {
+        args.websocket = options.websocket;
+    }
+
     if (unix) {
         args.unix = unix;
     } else {
         args.port = port;
     }
 
-    let server;
+    let server: any;
     try {
         server = Bun.serve(args);
     } catch (err: any) {
         if (!unix && err.code === 'EADDRINUSE') {
-            args.port = findAvailablePort(3001);
+            const fallbackStart = (port ?? 3000) + 1;
+            args.port = findAvailablePort(fallbackStart);
+            console.warn(`⚠️  Port ${port} in use, falling back to port ${args.port}`);
             server = Bun.serve(args);
         } else {
             throw err;
