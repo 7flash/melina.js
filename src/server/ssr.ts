@@ -49,16 +49,16 @@ export function renderToString(vnode: VNode | Child): string {
     const { type, props } = vnode as VNode;
 
     // Fragment — render children only
-    if (type === Fragment) return renderChildrenToString(props.children);
+    if (type === Fragment) return renderChildrenToString(props?.children);
 
     // Component — execute and render result
     if (typeof type === 'function') {
         // Head component: call for side-channel collection, render nothing in body
         if (type === Head) {
-            (type as any)(props);
+            (type as any)(props || {});
             return '';
         }
-        const result = (type as Component)(props);
+        const result = (type as Component)(props || {});
         return renderToString(result);
     }
 
@@ -66,7 +66,8 @@ export function renderToString(vnode: VNode | Child): string {
     const tagName = type as string;
     let html = `<${tagName}`;
 
-    for (const [key, value] of Object.entries(props)) {
+    const propsObj = props || {};
+    for (const [key, value] of Object.entries(propsObj)) {
         if (key === 'children' || key === 'key' || key === 'ref' || key.startsWith('on')) continue;
         if (value === undefined || value === null || value === false) continue;
 
@@ -98,10 +99,10 @@ export function renderToString(vnode: VNode | Child): string {
     if (VOID_ELEMENTS.has(tagName)) return html;
 
     // Inner content
-    if (props.dangerouslySetInnerHTML) {
-        html += props.dangerouslySetInnerHTML.__html;
+    if (propsObj.dangerouslySetInnerHTML) {
+        html += propsObj.dangerouslySetInnerHTML.__html;
     } else {
-        html += renderChildrenToString(props.children);
+        html += renderChildrenToString(propsObj.children);
     }
 
     html += `</${tagName}>`;
