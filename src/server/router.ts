@@ -40,7 +40,7 @@ export interface RouteMatch {
  *   app/posts/[id]/page.tsx -> /posts/:id
  *   app/blog/[year]/[month]/page.tsx -> /blog/:year/:month
  */
-function filePathToPattern(filePath: string, appDir: string): { pattern: string; paramNames: string[] } {
+export function filePathToPattern(filePath: string, appDir: string): { pattern: string; paramNames: string[] } {
     // Remove appDir prefix and page.tsx/page.ts suffix
     let relativePath = path.relative(appDir, filePath);
     // Normalize Windows backslashes to forward slashes
@@ -80,7 +80,7 @@ function filePathToPattern(filePath: string, appDir: string): { pattern: string;
  * Convert URL pattern to RegExp for matching
  * /posts/:id -> /^\/posts\/([^\/]+)$/
  */
-function patternToRegex(pattern: string): RegExp {
+export function patternToRegex(pattern: string): RegExp {
     const regexStr = pattern
         .replace(/\//g, '\\/')
         .replace(/:([^\/]+)/g, '([^\\/]+)');
