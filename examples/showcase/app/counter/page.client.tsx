@@ -46,7 +46,7 @@ export default function mount() {
                 onInc={() => { count++; update(); }}
                 onReset={() => { count = 0; update(); }}
             />,
-            root
+            root!
         );
     }
 
