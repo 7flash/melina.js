@@ -527,7 +527,7 @@ describe("serve", () => {
     const text = await response.text();
 
     expect(response.status).toBe(500);
-    expect(text).toContain("Server Error");
+    expect(text).toContain("Test error");
 
     server.stop();
   });
