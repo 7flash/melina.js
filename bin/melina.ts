@@ -1,11 +1,14 @@
 #!/usr/bin/env bun
 
 /**
- * melina CLI — Project scaffolding
+ * melina CLI — Project scaffolding & build tools
  * 
  * Usage:
  *   npx melina init <project-name>   Create a new Melina.js project
  *   npx melina init                  Create in current directory
+ *   npx melina build                 Build all assets to ./dist
+ *   npx melina build --outdir ./out  Build to custom directory
+ *   npx melina build --entry src/a.ts --entry src/b.tsx --outdir ./dist
  */
 
 const args = process.argv.slice(2);
@@ -18,10 +21,27 @@ if (!command || command === '--help' || command === '-h') {
 Usage:
   npx melina init <project-name>   Create a new project
   npx melina init .                Create in current directory
+  npx melina build                 Build all routes & assets to disk
+  npx melina build --outdir ./out  Build to custom output directory
+  npx melina build --entry <file>  Build specific entry points
+
+Build options:
+  --outdir <dir>     Output directory (default: ./dist)
+  --appdir <dir>     App directory for route discovery (default: ./app)
+  --css <file>       Global CSS file to process
+  --entry <file>     Entry point to build (repeatable)
 
 Options:
-  --help, -h                       Show this help message
+  --help, -h         Show this help message
 `);
+    process.exit(0);
+}
+
+if (command === 'build') {
+    // Dynamic import to avoid loading build deps for init command
+    const { buildToDisk, parseBuildArgs } = await import('../src/server/cli-build');
+    const options = parseBuildArgs(args.slice(1));
+    await buildToDisk(options);
     process.exit(0);
 }
 

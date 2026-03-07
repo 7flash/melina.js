@@ -22,9 +22,7 @@ Use Melina when the user wants:
 - Lightweight client bundles (zero React, zero framework overhead)
 - Static Site Generation (SSG) for pre-rendered pages
 
-**Do NOT use Melina** for:
-- Pure React SPAs (use Next.js or Vite + React)
-- Backend-only APIs (use Elysia or Hono)
+Melina replaces the full Next.js / Vite stack — server pages, API routes, SSG, and client interactivity — with zero React on the client.
 
 ---
 

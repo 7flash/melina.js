@@ -55,3 +55,6 @@ export { Head } from "./head";
 
 // SSG (Static Site Generation)
 export { prerender, getPrerendered, setPrerendered, clearSSGCache } from "./ssg";
+
+// CLI Build (build-to-disk)
+export { buildToDisk, parseBuildArgs } from "./cli-build";
