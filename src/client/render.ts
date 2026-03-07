@@ -191,11 +191,13 @@ function patchProps(
     fiber: Fiber,
 ): void {
     // Remove old props not in new
-    for (const key of Object.keys(oldProps)) {
+    const safeOldProps = oldProps || {};
+    const safeNewProps = newProps || {};
+    for (const key of Object.keys(safeOldProps)) {
         if (key === 'children' || key === 'key') continue;
-        if (key in newProps) continue;
+        if (key in safeNewProps) continue;
 
-        if (key.startsWith('on') && typeof oldProps[key] === 'function') {
+        if (key.startsWith('on') && typeof safeOldProps[key] === 'function') {
             const event = key.slice(2).toLowerCase();
             const oldListener = fiber.listeners.get(event);
             if (oldListener) {
@@ -212,9 +214,9 @@ function patchProps(
     }
 
     // Set new/changed props
-    for (const [key, value] of Object.entries(newProps)) {
+    for (const [key, value] of Object.entries(safeNewProps)) {
         if (key === 'children' || key === 'key') continue;
-        if (oldProps[key] === value) continue;
+        if (safeOldProps[key] === value) continue;
 
         if (key === 'className' || key === 'class') {
             el.className = value || '';
@@ -397,7 +399,8 @@ function mountVNode(
         return fiber;
     }
 
-    const { type, props } = vnode;
+    const { type, props: rawProps } = vnode;
+    const props = rawProps || {};
 
     // Fragment — no own DOM node, mount children directly
     if (type === Fragment) {
@@ -474,6 +477,7 @@ function cleanupFiber(fiber: Fiber): void {
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 function applyProps(el: HTMLElement, props: Props, fiber: Fiber): void {
+    if (!props) return;
     for (const [key, value] of Object.entries(props)) {
         if (key === 'children' || key === 'key') continue;
 
