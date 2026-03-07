@@ -159,6 +159,47 @@ describe('matchRoute', () => {
         expect(result).not.toBeNull()
         expect(result!.params.id).toBe('hello-world-2026')
     })
+
+    test('static route takes priority over dynamic at same level', () => {
+        // This is the exact bug from WARMAPS: /api/telegram/connect (static)
+        // was shadowed by /api/telegram/:action (dynamic)
+        const mixedRoutes: Route[] = [
+            // Dynamic route discovered first (filesystem: [action] < connect)
+            makeRoute('/api/telegram/:action', ['action']),
+            // Static route discovered second
+            makeRoute('/api/telegram/connect'),
+            makeRoute('/api/telegram/disconnect'),
+            makeRoute('/api/telegram/status'),
+        ]
+
+        // After sorting, static should come before dynamic
+        mixedRoutes.sort((a, b) => {
+            const aStatic = !a.pattern.includes(':')
+            const bStatic = !b.pattern.includes(':')
+            if (aStatic && !bStatic) return -1
+            if (!aStatic && bStatic) return 1
+            const aDepth = a.pattern.split('/').length
+            const bDepth = b.pattern.split('/').length
+            return bDepth - aDepth
+        })
+
+        // /api/telegram/connect should match the STATIC route, not :action
+        const connectResult = matchRoute('/api/telegram/connect', mixedRoutes)
+        expect(connectResult).not.toBeNull()
+        expect(connectResult!.route.pattern).toBe('/api/telegram/connect')
+        expect(connectResult!.params).toEqual({})
+
+        // /api/telegram/disconnect should also match static
+        const disconnectResult = matchRoute('/api/telegram/disconnect', mixedRoutes)
+        expect(disconnectResult).not.toBeNull()
+        expect(disconnectResult!.route.pattern).toBe('/api/telegram/disconnect')
+
+        // /api/telegram/reconnect should fall to dynamic since no static exists
+        const reconnectResult = matchRoute('/api/telegram/reconnect', mixedRoutes)
+        expect(reconnectResult).not.toBeNull()
+        expect(reconnectResult!.route.pattern).toBe('/api/telegram/:action')
+        expect(reconnectResult!.params).toEqual({ action: 'reconnect' })
+    })
 })
 
 // ─── discoverRoutes (integration) ───────────────────────
