@@ -178,6 +178,78 @@ export function getContentType(ext: string): string {
     }
 }
 
+// ─── Server-Only Package Detection ──────────────────────────────────────────────
+
+// Known server-only packages (fallback baseline)
+const KNOWN_SERVER_PACKAGES = ['sqlite-zod-orm', 'telegram', 'better-sqlite3', 'sqlite3'];
+
+// Cached result — detection runs once per process
+let _detectedServerPackages: string[] | null = null;
+
+/**
+ * Auto-detect server-only packages by scanning node_modules for packages
+ * that use `bun:*` imports. Also reads `melina.serverOnly` from the app's
+ * package.json for explicit additions.
+ *
+ * Detection strategy:
+ * 1. Read app's package.json for `melina.serverOnly` array (explicit config)
+ * 2. Scan each dependency's entry point for `bun:*` require/import patterns
+ * 3. Merge with known server packages and deduplicate
+ */
+function detectServerOnlyPackages(): string[] {
+    if (_detectedServerPackages) return _detectedServerPackages;
+
+    const detected = new Set<string>(KNOWN_SERVER_PACKAGES);
+
+    try {
+        // 1. Check app's package.json for melina.serverOnly config
+        const pkgPath = path.resolve(process.cwd(), 'package.json');
+        if (existsSync(pkgPath)) {
+            const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+            const configList = pkg?.melina?.serverOnly;
+            if (Array.isArray(configList)) {
+                for (const name of configList) {
+                    if (typeof name === 'string') detected.add(name);
+                }
+            }
+
+            // 2. Scan dependencies for bun:* imports
+            const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+            const nodeModules = path.resolve(process.cwd(), 'node_modules');
+
+            for (const depName of Object.keys(deps)) {
+                if (depName.startsWith('@types/')) continue;
+
+                try {
+                    const depPkgPath = path.join(nodeModules, depName, 'package.json');
+                    if (!existsSync(depPkgPath)) continue;
+
+                    const depPkg = JSON.parse(readFileSync(depPkgPath, 'utf-8'));
+                    const entry = depPkg.main || depPkg.module || depPkg.exports?.['.']?.import || depPkg.exports?.['.']?.default || 'index.js';
+                    const entryPath = path.join(nodeModules, depName, typeof entry === 'string' ? entry : 'index.js');
+
+                    if (existsSync(entryPath)) {
+                        const content = readFileSync(entryPath, 'utf-8');
+                        if (/\bbun:[a-z]+\b/.test(content)) {
+                            detected.add(depName);
+                        }
+                    }
+                } catch {
+                    // Skip packages that can't be scanned
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('[Melina] Failed to auto-detect server packages, using defaults:', e);
+    }
+
+    _detectedServerPackages = [...detected];
+    if (isDev) {
+        console.log(`[Melina] Server-only packages (stubbed for browser): ${_detectedServerPackages.join(', ')}`);
+    }
+    return _detectedServerPackages;
+}
+
 // ─── Client Script Builder ──────────────────────────────────────────────────────
 
 /**
@@ -251,7 +323,10 @@ async function _buildClientScriptImpl(clientPath: string): Promise<string> {
     // Server-only packages that should be stubbed (not externalized) so
     // the browser bundle doesn't contain bare specifier imports.
     // The stub uses a Proxy so any named import (e.g. { Database, z }) works.
-    const serverOnlyPackages = ['sqlite-zod-orm', 'telegram', 'better-sqlite3', 'sqlite3'];
+    //
+    // Auto-detected: scan node_modules for packages using bun:* imports.
+    // Also reads melina.serverOnly from package.json for app-specific additions.
+    const serverOnlyPackages = detectServerOnlyPackages();
 
     plugins.push({
         name: 'melina-server-stub',
