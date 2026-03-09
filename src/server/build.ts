@@ -191,18 +191,22 @@ export async function buildClientScript(clientPath: string): Promise<string> {
     const existing = buildInFlight.get(clientPath);
     if (existing) return existing;
 
-    const promise = buildMeasure(`Client: ${path.basename(clientPath)}`, () => _buildClientScriptImpl(clientPath), (e: any) => { throw e; }) as Promise<string>;
-    buildInFlight.set(clientPath, promise);
+    // Note: measure-fn returns null on error (does NOT re-throw even with onError)
+    // so we must check for null result instead of relying on try/catch
+    const promise = buildMeasure(`Client: ${path.basename(clientPath)}`, () => _buildClientScriptImpl(clientPath)) as Promise<string | null>;
+    buildInFlight.set(clientPath, promise as Promise<string>);
     try {
-        return await promise;
-    } catch (err) {
-        // If build fails but we have a cached fallback, use it instead of crashing
-        const cached = buildCache[clientPath];
-        if (cached) {
-            console.error(`[Melina] Build failed for ${clientPath}, using cached version:`, (err as Error).message);
-            return cached.outputPath;
+        const result = await promise;
+        if (result === null) {
+            // Build failed — try cache fallback
+            const cached = buildCache[clientPath];
+            if (cached) {
+                console.error(`[Melina] Build failed for ${clientPath}, using cached version`);
+                return cached.outputPath;
+            }
+            throw new Error(`Client script build failed: ${clientPath}`);
         }
-        throw err;
+        return result;
     } finally {
         buildInFlight.delete(clientPath);
     }
@@ -235,7 +239,45 @@ async function _buildClientScriptImpl(clientPath: string): Promise<string> {
     const jsxRuntimePath = path.resolve(__dirname, '../client/jsx-runtime.ts');
 
     const plugins: any[] = [];
-    const external: string[] = [];
+    // Externalize Node.js/Bun built-in modules (these don't get imported in the browser)
+    const external: string[] = [
+        'bun', 'bun:sqlite', 'bun:ffi', 'bun:test', 'bun:jsc',
+        'node:fs', 'node:path', 'node:crypto', 'node:os', 'node:child_process',
+        'node:net', 'node:http', 'node:https', 'node:stream', 'node:url',
+        'node:util', 'node:events', 'node:buffer', 'node:assert',
+        'fs', 'path', 'crypto', 'os', 'child_process', 'net', 'http', 'https',
+    ];
+
+    // Server-only packages that should be stubbed (not externalized) so
+    // the browser bundle doesn't contain bare specifier imports.
+    // The stub uses a Proxy so any named import (e.g. { Database, z }) works.
+    const serverOnlyPackages = ['sqlite-zod-orm', 'telegram', 'better-sqlite3', 'sqlite3'];
+
+    plugins.push({
+        name: 'melina-server-stub',
+        setup(build: any) {
+            const filter = new RegExp(`^(${serverOnlyPackages.join('|')})(/.*)?$`);
+            build.onResolve({ filter }, (args: any) => {
+                return { path: args.path, namespace: 'server-stub' };
+            });
+            build.onLoad({ filter: /.*/, namespace: 'server-stub' }, () => {
+                return {
+                    contents: `
+const handler = { get: (_, p) => (p === Symbol.toPrimitive ? () => '' : typeof p === 'string' ? new Proxy(() => {}, handler) : undefined) };
+const stub = new Proxy(() => {}, handler);
+export default stub;
+export const Database = stub;
+export const z = stub;
+export const TelegramClient = stub;
+export const StringSession = stub;
+// Catch-all: re-export stub for any destructured import
+export { stub as Api, stub as sessions };
+`,
+                    loader: 'js',
+                };
+            });
+        }
+    });
 
     if (usesReact) {
         external.push('react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-dom/client');
@@ -262,6 +304,7 @@ async function _buildClientScriptImpl(clientPath: string): Promise<string> {
             }
         });
     }
+
 
     const result = await serializedBuild(() => bunBuild({
         entrypoints: [clientPath],

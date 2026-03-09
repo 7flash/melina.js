@@ -417,8 +417,14 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
 
             const pageClientPath = match.route.filePath.replace(/\.tsx?$/, '.client.tsx');
             if (existsSync(pageClientPath)) {
-                const scriptPath = await buildClientScript(pageClientPath);
-                clientScriptUrls.push({ url: scriptPath, type: 'page' });
+                try {
+                    const scriptPath = await buildClientScript(pageClientPath);
+                    if (scriptPath) {
+                        clientScriptUrls.push({ url: scriptPath, type: 'page' });
+                    }
+                } catch (e: any) {
+                    console.error(`[Melina] Failed to build page client script: ${e.message}`);
+                }
             }
 
             const clientScriptTags: string[] = [];
