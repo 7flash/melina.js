@@ -58,3 +58,6 @@ export { prerender, getPrerendered, setPrerendered, clearSSGCache } from "./ssg"
 
 // CLI Build (build-to-disk)
 export { buildToDisk, parseBuildArgs } from "./cli-build";
+
+// Hot Reload (dev only)
+export { startHotReload, getHotReloadScript, handleHotReloadSSE, addClientScript } from "./hot-reload";

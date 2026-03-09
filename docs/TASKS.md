@@ -10,10 +10,10 @@
 
 ## 🟢 Priority: Features
 - [x] ~~**Build error reporting**~~ — ✅ DONE. After `Bun.build()`, now iterates `result.logs` and surfaces errors/warnings to the console with `[Melina Build Error/Warning]` prefix including file:line:column position. If `result.success === false`, throws with concatenated error messages instead of silently failing.
-- [ ] **Hot reload client scripts** — In dev mode, watch client script dependencies and auto-rebuild + hot-reload when they change.
+- [x] ~~**Hot reload client scripts**~~ — ✅ DONE. `hot-reload.ts` watches client script dependency trees using `fs.watch()`. On change, notifies browsers via `/__melina_hmr` SSE endpoint with 150ms debounce. Client-side reconnecting EventSource auto-reloads on `data: reload`. Dep tree walked using `Bun.Transpiler.scanImports()`. Dir watchers are per-directory with dedup. Dev-only, no-op in production.
 
 ## 📝 Architecture Notes
-- **Package**: `melina` on npm (current published: v2.3.7)
+- **Package**: `melina` on npm (current published: v2.4.0)
 - **Key files**: `src/server/build.ts` (asset pipeline), `src/server/app-router.ts` (routing + script injection)
 - **Client build**: `_buildClientScriptImpl` uses Bun's `build()` API with plugins for JSX transform + server stubbing
 - **measure-fn integration**: Build uses `createMeasure('build')` — returns `null` on error, does NOT re-throw

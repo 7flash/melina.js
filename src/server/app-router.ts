@@ -13,7 +13,8 @@ import { createElement } from "../client/render";
 import { renderToString } from "./ssr";
 import { resetHead, getHeadElements, Head } from "./head";
 import { imports } from "./imports";
-import { buildScript, buildStyle, buildScopedStyle, buildAsset, buildClientScript, clientScriptsUsingReact } from "./build";
+import { buildScript, buildStyle, buildClientScript, clientScriptsUsingReact, builtAssets, getContentType, buildScopedStyle, buildAsset } from './build';
+import { getHotReloadScript, addClientScript, getClientDeps } from './hot-reload';
 import { getPrerendered, prerender as ssgPrerender } from "./ssg";
 import { serve } from "./serve";
 import type { Handler, FrontendAppOptions, RenderPageOptions, AppRouterOptions } from "./types";
@@ -192,6 +193,7 @@ export async function renderPage(options: RenderPageOptions): Promise<string> {
           window.__MELINA_DATA__ = ${JSON.stringify({ params, props })};
         </script>
         ${scriptVirtualPath ? `<script src="${scriptVirtualPath}" type="module"></script>` : ''}
+        ${getHotReloadScript()}
       </body>
     </html>
   `;
@@ -502,6 +504,18 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
                     }
                 } else {
                     fullHtml = fullHtml.replace('</body>', `${clientScriptTags.join('\n')}</body>`);
+                }
+            }
+
+            // Inject HMR script (dev only) and register client scripts for watching
+            const hmrScript = getHotReloadScript();
+            if (hmrScript) {
+                fullHtml = fullHtml.replace('</body>', `${hmrScript}</body>`);
+            }
+            if (isDev) {
+                for (const clientPath of allClientPaths) {
+                    const deps = getClientDeps(clientPath);
+                    addClientScript(clientPath, deps);
                 }
             }
 

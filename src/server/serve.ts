@@ -10,6 +10,7 @@ import { measure } from 'measure-fn';
 import type { MeasureFn } from 'measure-fn';
 import { builtAssets, getContentType } from "./build";
 import type { Handler } from "./types";
+import { startHotReload, handleHotReloadSSE } from './hot-reload';
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -107,6 +108,11 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
             try {
                 const url = new URL(req.url);
                 const pathname = url.pathname;
+
+                // Hot reload SSE endpoint (dev only)
+                if (isDev && pathname === '/__melina_hmr') {
+                    return handleHotReloadSSE();
+                }
 
                 // WebSocket upgrade — when a websocket handler is configured,
                 // automatically upgrade requests with the Upgrade header
@@ -269,6 +275,9 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
     } else {
         console.log(`🦊 Melina server running at http://localhost:${server.port}`);
     }
+
+    // Start hot reload watcher in dev mode
+    if (isDev) startHotReload();
 
     // Graceful shutdown
     const shutdown = async (signal: string) => {
