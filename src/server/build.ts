@@ -426,6 +426,31 @@ async function _buildScriptImpl(absolutePath: string, filePath: string, allExter
         throw new Error(`Build failed for ${filePath}: ${error}`);
     }
 
+    // Surface build logs (errors, warnings) to the developer console
+    if (result.logs && result.logs.length > 0) {
+        for (const log of result.logs) {
+            const level = log.level || 'info';
+            const msg = log.message || String(log);
+            const position = log.position ? ` at ${log.position.file}:${log.position.line}:${log.position.column}` : '';
+            if (level === 'error') {
+                console.error(`[Melina Build Error] ${msg}${position}`);
+            } else if (level === 'warning') {
+                console.warn(`[Melina Build Warning] ${msg}${position}`);
+            } else if (isDev) {
+                console.log(`[Melina Build] ${msg}${position}`);
+            }
+        }
+    }
+
+    // Check if build succeeded (Bun returns success: false on build errors)
+    if (result.success === false) {
+        const errorMessages = (result.logs || [])
+            .filter((l: any) => l.level === 'error')
+            .map((l: any) => l.message || String(l))
+            .join('\n');
+        throw new Error(`Build failed for ${filePath}:\n${errorMessages || 'Unknown build error'}`);
+    }
+
     const mainOutput = result.outputs.find(o => o.kind === 'entry-point');
     if (!mainOutput) {
         throw new Error(`No entry-point output found for ${filePath}`);

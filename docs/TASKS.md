@@ -9,7 +9,7 @@
 - [x] ~~**tsconfig dist overlap**~~ — ✅ DONE. Changed `rootDir` from `./` to `./src`, added `include: ["src/**/*"]` and `exclude: ["dist", "node_modules"]`. Removed stale `dist/src/` directory. Declarations now emit to `dist/client/` and `dist/server/` without nesting collision. All 19 lint warnings resolved.
 
 ## 🟢 Priority: Features
-- [ ] **Build error reporting** — When `buildClientScript` fails, surface the actual Bun build error messages (from `result.logs`) to the developer console instead of just logging "Build failed".
+- [x] ~~**Build error reporting**~~ — ✅ DONE. After `Bun.build()`, now iterates `result.logs` and surfaces errors/warnings to the console with `[Melina Build Error/Warning]` prefix including file:line:column position. If `result.success === false`, throws with concatenated error messages instead of silently failing.
 - [ ] **Hot reload client scripts** — In dev mode, watch client script dependencies and auto-rebuild + hot-reload when they change.
 
 ## 📝 Architecture Notes
