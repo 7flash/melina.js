@@ -5,7 +5,7 @@
 
 ## 🟡 Priority: Improve
 - [x] ~~**Auto-detect server-only deps**~~ — ✅ DONE. `detectServerOnlyPackages()` scans `node_modules` for packages using `bun:*` imports and auto-stubs them. Also reads `melina.serverOnly` from app's `package.json` for explicit additions. Cached after first call. Falls back to known packages (`sqlite-zod-orm`, `telegram`, etc.) if detection fails.
-- [ ] **Publish v2.4.0** — The server-stub fix and null-guard are only in local source. Need to publish to npm so downstream apps (WARMAPS, Geeksy) can use the registry version instead of `file:` links.
+- [x] ~~**Publish v2.4.0**~~ — ✅ DONE. Published `melina@2.4.0` to npm with: tsconfig fix (rootDir→src, clean dist paths), build error reporting, auto-detect server-only deps. All exports paths updated from `dist/src/` to `dist/`.
 - [x] ~~**tsconfig dist overlap**~~ — ✅ DONE. Changed `rootDir` from `./` to `./src`, added `include: ["src/**/*"]` and `exclude: ["dist", "node_modules"]`. Removed stale `dist/src/` directory. Declarations now emit to `dist/client/` and `dist/server/` without nesting collision. All 19 lint warnings resolved.
 
 ## 🟢 Priority: Features

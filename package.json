@@ -1,6 +1,6 @@
 {
   "name": "melina",
-  "version": "2.3.8",
+  "version": "2.4.0",
   "description": "A lightweight web framework for Bun with Next.js-style routing and zero-config builds.",
   "module": "./src/web.ts",
   "main": "./src/web.ts",
@@ -17,63 +17,63 @@
   ],
   "exports": {
     ".": {
-      "types": "./dist/src/web.d.ts",
+      "types": "./dist/web.d.ts",
       "default": "./src/web.ts"
     },
     "./web": {
-      "types": "./dist/src/web.d.ts",
+      "types": "./dist/web.d.ts",
       "default": "./src/web.ts"
     },
     "./server": {
-      "types": "./dist/src/server/index.d.ts",
+      "types": "./dist/server/index.d.ts",
       "default": "./src/server/index.ts"
     },
     "./server/build": {
-      "types": "./dist/src/server/build.d.ts",
+      "types": "./dist/server/build.d.ts",
       "default": "./src/server/build.ts"
     },
     "./server/serve": {
-      "types": "./dist/src/server/serve.d.ts",
+      "types": "./dist/server/serve.d.ts",
       "default": "./src/server/serve.ts"
     },
     "./server/imports": {
-      "types": "./dist/src/server/imports.d.ts",
+      "types": "./dist/server/imports.d.ts",
       "default": "./src/server/imports.ts"
     },
     "./server/router": {
-      "types": "./dist/src/server/router.d.ts",
+      "types": "./dist/server/router.d.ts",
       "default": "./src/server/router.ts"
     },
     "./server/ssr": {
-      "types": "./dist/src/server/ssr.d.ts",
+      "types": "./dist/server/ssr.d.ts",
       "default": "./src/server/ssr.ts"
     },
     "./client": {
-      "types": "./dist/src/client/index.d.ts",
+      "types": "./dist/client/index.d.ts",
       "default": "./src/client/index.ts"
     },
     "./client/render": {
-      "types": "./dist/src/client/render.d.ts",
+      "types": "./dist/client/render.d.ts",
       "default": "./src/client/render.ts"
     },
     "./client/types": {
-      "types": "./dist/src/client/types.d.ts",
+      "types": "./dist/client/types.d.ts",
       "default": "./src/client/types.ts"
     },
     "./client/reconcilers": {
-      "types": "./dist/src/client/reconcilers/index.d.ts",
+      "types": "./dist/client/reconcilers/index.d.ts",
       "default": "./src/client/reconcilers/index.ts"
     },
     "./client/jsx-runtime": {
-      "types": "./dist/src/client/jsx-runtime.d.ts",
+      "types": "./dist/client/jsx-runtime.d.ts",
       "default": "./src/client/jsx-runtime.ts"
     },
     "./client/jsx-dev-runtime": {
-      "types": "./dist/src/client/jsx-dev-runtime.d.ts",
+      "types": "./dist/client/jsx-dev-runtime.d.ts",
       "default": "./src/client/jsx-dev-runtime.ts"
     },
     "./client/jsx-dom": {
-      "types": "./dist/src/client/jsx-dom.d.ts",
+      "types": "./dist/client/jsx-dom.d.ts",
       "default": "./src/client/jsx-dom.ts"
     }
   },
@@ -115,7 +115,7 @@
     "postcss": "^8.5.6",
     "ts-dedent": "^2.2.0"
   },
-  "types": "./dist/src/web.d.ts",
+  "types": "./dist/web.d.ts",
   "scripts": {
     "build": "tsc"
   }
