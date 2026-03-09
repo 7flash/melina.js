@@ -38,6 +38,9 @@ No React on the client. No hydration mismatch. No bundle bloat.
 - **In-memory builds** — No `dist/` folder — assets built and served from RAM
 - **Import maps** — Browser-native module resolution for client dependencies
 - **Pluggable reconcilers** — Keyed, sequential, or replace strategies for VDOM diffing
+- **Hot reload** — Dev-only SSE-based live reload. Watches client script dep trees, reloads browser on save (v2.5.0)
+- **Auto server-only stubbing** — Scans `node_modules` for `bun:*` imports and auto-stubs them for browser builds
+- **Build error reporting** — Surfaces Bun build errors/warnings with file:line:column positions
 - **Observability** — All operations instrumented with [measure-fn](https://github.com/7flash/measure-fn)
 
 ## Quick Start
@@ -418,19 +421,28 @@ The critical difference: **Cached SSR penalizes the first visitor** with a full 
 
 If you need truly dynamic, per-request data (user-specific content, authenticated pages), use SSR. If you want caching, use SSG with `revalidate`. There's no use case where "SSR + cache the response" beats "SSG + periodic revalidation" — SSG is strictly better because it eliminates the cold-start penalty entirely.
 
-#### Why no built-in hot reload
+#### Hot Reload (v2.5.0)
 
-We run the server with `bun run server.ts`. When you change a file, you restart. This takes **~10ms** with Bun's startup speed.
+In dev mode, Melina watches your client script dependency trees and auto-reloads the browser on save:
 
-A file watcher would add:
-- `fs.watch` complexity (platform-specific bugs, especially on Windows)
-- Module cache invalidation logic (which Bun doesn't fully support yet)
-- A WebSocket server for browser refresh
-- Edge cases around partial rebuilds, circular imports, and CSS hot replacement
+- `hot-reload.ts` uses `fs.watch()` on directories containing client scripts and their imports
+- When a file changes, an SSE event is sent to the browser via `/__melina_hmr`
+- A reconnecting `EventSource` client in the page triggers `window.location.reload()`
+- 150ms debounce handles editors that write multiple times per save
+- Dep trees are walked using `Bun.Transpiler.scanImports()` — only local imports are followed
+- Completely no-op in production
 
-The tradeoff isn't worth it. Bun starts fast enough that `Ctrl+C → ↑ → Enter` is near-instant. Tools like [bgrun](https://github.com/7flash/bgrun) can watch and auto-restart for you externally — keeping that concern out of the framework.
+Apps can also configure server-only packages via `package.json`:
 
-We'd rather have a small, correct codebase than a large one with a fragile file watcher.
+```json
+{
+  "melina": {
+    "serverOnly": ["my-db-adapter", "internal-auth-lib"]
+  }
+}
+```
+
+These packages will be stubbed with a `Proxy` in browser builds, preventing `bun:*` import errors.
 
 ### Project Structure
 
@@ -445,6 +457,7 @@ src/
 │   ├── ssr.ts              # renderToString (VNode → HTML)
 │   ├── head.ts             # <Head> component (side-channel collection)
 │   ├── imports.ts          # Import map generation
+│   ├── hot-reload.ts       # Dev-only SSE hot reload + file watcher
 │   └── types.ts            # Shared types
 ├── client/
 │   ├── render.ts           # VDOM renderer + Fiber reconciler (~2KB)
