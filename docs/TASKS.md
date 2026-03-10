@@ -11,6 +11,8 @@
 ## 🟢 Priority: Features
 - [x] ~~**Build error reporting**~~ — ✅ DONE. After `Bun.build()`, now iterates `result.logs` and surfaces errors/warnings to the console with `[Melina Build Error/Warning]` prefix including file:line:column position. If `result.success === false`, throws with concatenated error messages instead of silently failing.
 - [x] ~~**Hot reload client scripts**~~ — ✅ DONE. `hot-reload.ts` watches client script dependency trees using `fs.watch()`. On change, notifies browsers via `/__melina_hmr` SSE endpoint with 150ms debounce. Client-side reconnecting EventSource auto-reloads on `data: reload`. Dep tree walked using `Bun.Transpiler.scanImports()`. Dir watchers are per-directory with dedup. Dev-only, no-op in production.
+- [ ] **CSS module / scoped styles** — Add support for `.module.css` imports in client scripts, with automatic class name scoping to prevent style collisions across pages.
+- [ ] **Integration test suite** — Add tests that spin up a real Melina server, request pages, and verify SSR output + client script injection. Currently there are zero framework-level tests.
 
 ## 📝 Architecture Notes
 - **Package**: `melina` on npm (current published: v2.4.0)
