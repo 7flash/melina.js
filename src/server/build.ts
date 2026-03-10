@@ -380,6 +380,53 @@ export { stub as Api, stub as sessions };
         });
     }
 
+    // CSS Modules plugin — intercepts .module.css imports
+    plugins.push({
+        name: 'melina-css-modules',
+        setup(build: any) {
+            // Resolve .module.css imports to a virtual namespace
+            build.onResolve({ filter: /\.module\.css$/ }, (args: any) => {
+                const resolved = args.importer
+                    ? path.resolve(path.dirname(args.importer), args.path)
+                    : path.resolve(args.path);
+                return { path: resolved, namespace: 'css-module' };
+            });
+
+            // Load: build the CSS module and return JS that injects styles + exports classMap
+            build.onLoad({ filter: /.*/, namespace: 'css-module' }, async (args: any) => {
+                const moduleResult = await buildCSSModule(args.path);
+                const mapEntries = Object.entries(moduleResult.classMap)
+                    .map(([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v)}`)
+                    .join(',\n');
+
+                // Emit JS that:
+                // 1. Injects a <style> tag with the scoped CSS (idempotent via data attribute)
+                // 2. Exports the class name mapping
+                const escapedCss = moduleResult.css
+                    .replace(/\\/g, '\\\\')
+                    .replace(/`/g, '\\`')
+                    .replace(/\$/g, '\\$');
+
+                return {
+                    contents: `
+// CSS Module: ${path.basename(args.path)}
+const id = ${JSON.stringify('cssmod-' + path.basename(args.path, '.module.css'))};
+if (typeof document !== 'undefined' && !document.querySelector(\`style[data-cssmod="\${id}"]\`)) {
+    const style = document.createElement('style');
+    style.setAttribute('data-cssmod', id);
+    style.textContent = \`${escapedCss}\`;
+    document.head.appendChild(style);
+}
+export default {
+${mapEntries}
+};
+`,
+                    loader: 'js',
+                };
+            });
+        }
+    });
+
 
     const result = await serializedBuild(() => bunBuild({
         entrypoints: [clientPath],
@@ -795,6 +842,114 @@ function scopeSelectors(css: string, scope: string): string {
 
     return lines.join('\n');
 }
+
+// ─── CSS Modules ────────────────────────────────────────────────────────────────
+
+/** Result of building a CSS module */
+export interface CSSModuleResult {
+    /** Map of original class names to scoped class names */
+    classMap: Record<string, string>;
+    /** URL path to the built scoped CSS asset */
+    cssUrl: string;
+    /** The scoped CSS content */
+    css: string;
+}
+
+/** Cache for CSS module results by absolute path */
+const cssModuleCache = new Map<string, CSSModuleResult>();
+
+/**
+ * Build a CSS module file (.module.css).
+ * 
+ * - Parses the CSS and extracts all class names
+ * - Generates unique scoped names: `.card` → `.card_abc12345`
+ * - Processes through PostCSS (autoprefixer, etc.)
+ * - Stores the built CSS as a served asset
+ * - Returns the class name map for JS imports
+ *
+ * @param filePath Path to the .module.css file
+ * @returns Object with classMap, cssUrl, and css content
+ */
+export async function buildCSSModule(filePath: string): Promise<CSSModuleResult> {
+    const absolutePath = path.resolve(process.cwd(), filePath);
+    if (!existsSync(absolutePath)) {
+        throw new Error(`CSS module not found: ${filePath}`);
+    }
+
+    // Dev mtime cache
+    if (isDev) {
+        try {
+            const mtime = Bun.file(absolutePath).lastModified;
+            const cached = cssModuleCache.get(absolutePath);
+            if (cached) {
+                const devCached = devMtimeCache.get(`cssmod:${absolutePath}`);
+                if (devCached && devCached.mtime === mtime) return cached;
+            }
+        } catch { /* rebuild */ }
+    } else if (cssModuleCache.has(absolutePath)) {
+        return cssModuleCache.get(absolutePath)!;
+    }
+
+    const cssContent = await Bun.file(absolutePath).text();
+
+    // Generate a short hash from the file path for scoping
+    const fileHash = new Bun.CryptoHasher("sha256")
+        .update(absolutePath)
+        .digest('hex')
+        .slice(0, 8);
+
+    // Extract class names and build the scope map
+    const classMap: Record<string, string> = {};
+    const classRegex = /\.([a-zA-Z_][\w-]*)/g;
+    let match;
+    while ((match = classRegex.exec(cssContent)) !== null) {
+        const className = match[1];
+        if (!classMap[className]) {
+            classMap[className] = `${className}_${fileHash}`;
+        }
+    }
+
+    // Replace class names in the CSS with scoped versions
+    let scopedCss = cssContent;
+    for (const [original, scoped] of Object.entries(classMap)) {
+        // Replace .className with .className_hash (careful with word boundaries)
+        const pattern = new RegExp(`\\.${original}(?=[^\\w-])`, 'g');
+        scopedCss = scopedCss.replace(pattern, `.${scoped}`);
+    }
+
+    // Process through PostCSS
+    const result = await serializedBuild(() =>
+        postcss([autoprefixer, tailwind]).process(scopedCss, {
+            from: absolutePath,
+            to: 'module.css',
+            map: false,
+        })
+    );
+
+    if (!result.css) throw new Error(`PostCSS returned empty for CSS module ${absolutePath}`);
+
+    const finalCss = result.css;
+    const contentHash = new Bun.CryptoHasher("sha256").update(finalCss).digest('hex').slice(0, 8);
+    const baseName = path.basename(absolutePath, '.module.css');
+    const cssUrl = `/${baseName}.module-${contentHash}.css`;
+    const content = new TextEncoder().encode(finalCss).buffer as ArrayBuffer;
+
+    builtAssets[cssUrl] = { content, contentType: 'text/css' };
+
+    const moduleResult: CSSModuleResult = { classMap, cssUrl, css: finalCss };
+    cssModuleCache.set(absolutePath, moduleResult);
+
+    // Update dev mtime cache
+    if (isDev) {
+        try {
+            const mtime = Bun.file(absolutePath).lastModified;
+            devMtimeCache.set(`cssmod:${absolutePath}`, { mtime, outputPath: cssUrl });
+        } catch { /* ok */ }
+    }
+
+    return moduleResult;
+}
+
 
 // ─── Static Asset Builder ───────────────────────────────────────────────────────
 

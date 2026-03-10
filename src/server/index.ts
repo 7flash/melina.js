@@ -25,12 +25,15 @@ export {
     buildStyle,
     buildAsset,
     buildClientScript,
+    buildCSSModule,
     asset,
     clearCaches,
     getContentType,
     builtAssets,
     buildCache,
 } from "./build";
+
+export type { CSSModuleResult } from "./build";
 
 // HTTP server
 export { serve, findAvailablePort } from "./serve";
