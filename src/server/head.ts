@@ -57,7 +57,7 @@ function renderHeadChild(child: VNode | Child): string {
     const tag = vnode.type as string;
     let html = `<${tag}`;
 
-    for (const [key, value] of Object.entries(vnode.props)) {
+    for (const [key, value] of Object.entries(vnode.props || {})) {
         if (key === 'children' || key === 'key' || key === 'ref') continue;
         if (value === undefined || value === null || value === false) continue;
 
