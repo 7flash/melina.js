@@ -174,10 +174,14 @@ describe('matchRoute', () => {
 
         // After sorting, static should come before dynamic
         mixedRoutes.sort((a, b) => {
-            const aStatic = !a.pattern.includes(':')
-            const bStatic = !b.pattern.includes(':')
+            const aCatchAll = a.pattern.includes('*')
+            const bCatchAll = b.pattern.includes('*')
+            const aStatic = !a.pattern.includes(':') && !aCatchAll
+            const bStatic = !b.pattern.includes(':') && !bCatchAll
             if (aStatic && !bStatic) return -1
             if (!aStatic && bStatic) return 1
+            if (aCatchAll && !bCatchAll) return 1
+            if (!aCatchAll && bCatchAll) return -1
             const aDepth = a.pattern.split('/').length
             const bDepth = b.pattern.split('/').length
             return bDepth - aDepth
