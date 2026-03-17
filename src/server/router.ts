@@ -53,17 +53,23 @@ export function filePathToPattern(filePath: string, appDir: string): { pattern: 
         return { pattern: '/', paramNames: [] };
     }
 
-    // Convert [param] to :param and collect param names
+    // Convert [param] to :param and [...slug] to *slug, collecting param names
     const paramNames: string[] = [];
     const pattern = '/' + relativePath
         .split('/')
         .map(segment => {
-            // Handle dynamic segments like [id] or [slug]
+            const catchAllMatch = segment.match(/^\[\.\.\.([^\]]+)\]$/);
+            if (catchAllMatch) {
+                paramNames.push(catchAllMatch[1]);
+                return `*${catchAllMatch[1]}`;
+            }
+
             const match = segment.match(/^\[([^\]]+)\]$/);
             if (match) {
                 paramNames.push(match[1]);
                 return `:${match[1]}`;
             }
+
             // Handle route groups like (group) - ignore them in URL
             if (segment.match(/^\([^)]+\)$/)) {
                 return null;
@@ -79,10 +85,12 @@ export function filePathToPattern(filePath: string, appDir: string): { pattern: 
 /**
  * Convert URL pattern to RegExp for matching
  * /posts/:id -> /^\/posts\/([^\/]+)$/
+ * /docs/*slug -> /^\/docs\/(.+)$/
  */
 export function patternToRegex(pattern: string): RegExp {
     const regexStr = pattern
         .replace(/\//g, '\\/')
+        .replace(/\*([^\/]+)/g, '(.+)')
         .replace(/:([^\/]+)/g, '([^\\/]+)');
     return new RegExp(`^${regexStr}$`);
 }

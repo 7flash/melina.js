@@ -119,6 +119,7 @@ describe('matchRoute', () => {
     const routes: Route[] = [
         makeRoute('/about'),
         makeRoute('/posts/:id', ['id']),
+        makeRoute('/docs/*slug', ['slug']),
         makeRoute('/blog/:year/:month', ['year', 'month']),
         makeRoute('/'),
     ]
