@@ -6,7 +6,7 @@
  *
  * Run: bun test src/server/router.test.ts
  */
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
 import { filePathToPattern, patternToRegex, matchRoute, discoverRoutes } from './router'
 import type { Route } from './router'
 import path from 'path'
@@ -222,5 +222,20 @@ describe('discoverRoutes', () => {
         // We just verify it doesn't crash
         const routes = discoverRoutes(appDir)
         expect(Array.isArray(routes)).toBe(true)
+    })
+
+    test('supports quiet discovery without measurement logging', () => {
+        const appDir = path.resolve(import.meta.dir, '../../../app')
+        const originalLog = console.log
+        const logSpy = mock(() => undefined)
+        console.log = logSpy as any
+
+        try {
+            const routes = discoverRoutes(appDir, { quiet: true })
+            expect(Array.isArray(routes)).toBe(true)
+            expect(logSpy).not.toHaveBeenCalled()
+        } finally {
+            console.log = originalLog
+        }
     })
 })

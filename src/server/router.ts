@@ -173,8 +173,12 @@ function findMiddlewares(pageFilePath: string, appDir: string): string[] {
 /**
  * Recursively discover all page.tsx/page.ts and route.ts files in app directory
  */
-export function discoverRoutes(appDir: string): Route[] {
-    return measureSync('Discover routes', () => {
+export interface DiscoverRoutesOptions {
+    quiet?: boolean;
+}
+
+export function discoverRoutes(appDir: string, options: DiscoverRoutesOptions = {}): Route[] {
+    const discover = () => {
         const routes: Route[] = [];
 
         function scanDir(dir: string) {
@@ -253,7 +257,13 @@ export function discoverRoutes(appDir: string): Route[] {
         });
 
         return routes;
-    }) ?? [];
+    };
+
+    if (options.quiet) {
+        return discover();
+    }
+
+    return measureSync('Discover routes', discover) ?? [];
 }
 
 /**
