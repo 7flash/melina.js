@@ -49,6 +49,12 @@ export {
 
 // Router (file-based route discovery)
 export { discoverRoutes, matchRoute } from "./router";
+export {
+    discoverContractRoutes,
+    assertRouteExpectation,
+    catchAllRoutingContract,
+} from "./router-contract";
+export type { RouteExpectation } from "./router-contract";
 
 // SSR
 export { renderToString } from "./ssr";
