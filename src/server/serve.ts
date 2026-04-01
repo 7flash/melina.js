@@ -41,7 +41,7 @@ function generateRequestId(): string {
  * Automatically determines port or unix socket from BUN_PORT env var or CLI arg.
  * Handles cleanup and graceful shutdown automatically.
  */
-export async function serve(handler: Handler, options?: { port?: number; unix?: string; websocket?: any }) {
+export async function serve(handler: Handler, options?: { port?: number; unix?: string; websocket?: any; hotReload?: boolean }) {
     // Automatic detection logic
     let port: number | undefined;
     let unix: string | undefined;
@@ -93,6 +93,7 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
     }
 
     const hasWebSocket = !!options?.websocket;
+    const hotReloadEnabled = isDev && options?.hotReload === true;
 
     const args: any = {
         idleTimeout: 0,
@@ -109,8 +110,8 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
                 const url = new URL(req.url);
                 const pathname = url.pathname;
 
-                // Hot reload SSE endpoint (dev only)
-                if (isDev && pathname === '/__melina_hmr') {
+                // Hot reload SSE endpoint (dev only, opt-in)
+                if (hotReloadEnabled && pathname === '/__melina_hmr') {
                     return handleHotReloadSSE();
                 }
 
@@ -276,8 +277,8 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
         console.log(`🦊 Melina server running at http://localhost:${server.port}`);
     }
 
-    // Start hot reload watcher in dev mode
-    if (isDev) startHotReload();
+    // Start hot reload watcher in dev mode only when explicitly enabled
+    if (hotReloadEnabled) startHotReload();
 
     // Graceful shutdown
     const shutdown = async (signal: string) => {

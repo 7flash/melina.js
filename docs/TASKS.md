@@ -1,6 +1,7 @@
 # Melina.js Tasks & Ideas
 
 ## 🔴 Priority: Fix
+- [x] ~~**HMR should be opt-in, not default-on**~~ — ✅ DONE. Added `hotReload?: boolean` to Melina app/server options, disabled HMR by default, gated both the injected browser script and `/__melina_hmr` SSE endpoint behind explicit opt-in, and covered the behavior with router/server tests.
 - [x] ~~**Client script build fails with server-only deps**~~ — ✅ DONE. When `page.client.tsx` transitively imports server-only modules (e.g. `sqlite-zod-orm` → `bun:sqlite`), the Bun browser-target build failed. Three layered fixes: (1) `melina-server-stub` plugin stubs server-only packages with Proxy-based exports, (2) `buildClientScript` checks for `null` return from `measure-fn` instead of relying on `try/catch` (measure-fn swallows errors and returns null), (3) `app-router.ts` guards against null/failed builds so pages still render without client interactivity.
 
 ## 🟡 Priority: Improve

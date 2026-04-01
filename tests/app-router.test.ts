@@ -50,6 +50,26 @@ describe('createAppRouter', () => {
         expect(html).toContain('</html>');
     });
 
+    test('does not inject HMR script by default', async () => {
+        const handler = createAppRouter({ appDir: showcaseDir, defaultTitle: 'Test' });
+        const req = new Request('http://localhost:3000/counter');
+        const res = await handler(req, m) as Response;
+        const html = await res.text();
+
+        expect(html).not.toContain('/__melina_hmr');
+        expect(html).not.toContain('[Melina HMR] Reloading...');
+    });
+
+    test('injects HMR script only when hotReload is enabled', async () => {
+        const handler = createAppRouter({ appDir: showcaseDir, defaultTitle: 'Test', hotReload: true });
+        const req = new Request('http://localhost:3000/counter');
+        const res = await handler(req, m) as Response;
+        const html = await res.text();
+
+        expect(html).toContain('/__melina_hmr');
+        expect(html).toContain('[Melina HMR] Reloading...');
+    });
+
     test('returns 200 for nested routes', async () => {
         const handler = createAppRouter({ appDir: showcaseDir, defaultTitle: 'Test' });
         const req = new Request('http://localhost:3000/counter');

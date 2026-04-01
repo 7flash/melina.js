@@ -63,6 +63,7 @@ await start({
   appDir: './app',
   port: 3000,
   defaultTitle: 'My App',
+  // hotReload: true, // opt-in in dev
 });
 ```
 
@@ -338,9 +339,10 @@ const handler = createAppRouter({
   appDir: './app',
   defaultTitle: 'My App',
   globalCss: './app/globals.css',
+  hotReload: true,
 });
 
-serve(handler, { port: 3000 });
+serve(handler, { port: 3000, hotReload: true });
 ```
 
 ### Client: `render(vnode, container)`
@@ -482,6 +484,22 @@ Every operation is instrumented with [measure-fn](https://github.com/7flash/meas
 [b-a] ✓ Middleware: app 0.12ms
 [b-b] ... Import page
 [b-b] ✓ Import page 0.04ms
+[b-c] ... SSR renderToString
+[b-c] ✓ SSR renderToString 0.31ms
+[build:d] ... Style: globals.css
+[build:d] ✓ Style: globals.css 0.10ms
+[b] ✓ GET http://localhost:3000/ 2.14ms
+```
+
+### Running Tests
+
+```bash
+bun test
+```
+
+## License
+
+MIT © [7flash](https://github.com/7flash) Import page 0.04ms
 [b-c] ... SSR renderToString
 [b-c] ✓ SSR renderToString 0.31ms
 [build:d] ... Style: globals.css

@@ -531,6 +531,30 @@ describe("serve", () => {
 
     server.stop();
   });
+
+  test("should not expose HMR endpoint by default", async () => {
+    const handler = () => "OK";
+    const server = await serve(handler, { port: getRandomPort() });
+
+    const response = await fetch(`http://localhost:${server.port}/__melina_hmr`);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("OK");
+
+    server.stop();
+  });
+
+  test("should expose HMR endpoint only when hotReload is enabled", async () => {
+    const handler = () => "OK";
+    const server = await serve(handler, { port: getRandomPort(), hotReload: true });
+
+    const response = await fetch(`http://localhost:${server.port}/__melina_hmr`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+
+    server.stop();
+  });
 });
 
 describe("getContentType", () => {

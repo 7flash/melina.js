@@ -219,6 +219,7 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
     const {
         appDir = path.join(process.cwd(), 'app'),
         defaultTitle = 'Melina App',
+        hotReload = false,
     } = options;
 
     const routes = discoverRoutes(appDir);
@@ -508,11 +509,11 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
             }
 
             // Inject HMR script (dev only) and register client scripts for watching
-            const hmrScript = getHotReloadScript();
+            const hmrScript = hotReload ? getHotReloadScript() : '';
             if (hmrScript) {
                 fullHtml = fullHtml.replace('</body>', `${hmrScript}</body>`);
             }
-            if (isDev) {
+            if (isDev && hotReload) {
                 for (const clientPath of allClientPaths) {
                     const deps = getClientDeps(clientPath);
                     addClientScript(clientPath, deps);
@@ -604,7 +605,7 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
  * ```
  */
 export async function start(options: AppRouterOptions & { port?: number; unix?: string } = {}) {
-    const { port, unix, ...routerOptions } = options;
-    const router = createAppRouter(routerOptions);
-    return serve(router, { port, unix });
+    const { port, unix, hotReload = false, ...routerOptions } = options;
+    const router = createAppRouter({ ...routerOptions, hotReload });
+    return serve(router, { port, unix, hotReload });
 }
