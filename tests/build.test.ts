@@ -10,6 +10,7 @@
 import { describe, test, expect, beforeAll } from 'bun:test';
 import { getContentType, buildScript, buildStyle, clearCaches, builtAssets, buildCache } from '../src/server/build';
 import path from 'path';
+import { writeFileSync } from 'fs';
 
 // ─── Content Type Detection ────────────────────────────────────────────────────
 
@@ -101,6 +102,25 @@ describe('buildStyle', () => {
     test('stores built CSS in builtAssets', () => {
         expect(builtAssets[builtUrl]).toBeDefined();
         expect(builtAssets[builtUrl].contentType).toBe('text/css');
+    });
+});
+
+describe('build deduplication', () => {
+    test('coalesces concurrent style builds across relative and absolute paths', async () => {
+        const fixtureFile = path.join(import.meta.dir, 'tmp-concurrency.css');
+        writeFileSync(fixtureFile, '.race-check { color: rebeccapurple; }');
+
+        clearCaches();
+
+        const relativePath = path.relative(process.cwd(), fixtureFile);
+        const [fromRelative, fromAbsolute] = await Promise.all([
+            buildStyle(relativePath),
+            buildStyle(fixtureFile),
+        ]);
+
+        expect(fromRelative).toBe(fromAbsolute);
+        expect(builtAssets[fromRelative]).toBeDefined();
+        expect(Object.keys(buildCache)).toContain(path.resolve(fixtureFile));
     });
 });
 

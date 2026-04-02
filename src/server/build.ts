@@ -30,6 +30,10 @@ export const builtAssets: Record<string, { content: ArrayBuffer; contentType: st
 // editing any imported module triggers a rebuild.
 const devMtimeCache = new Map<string, { mtime: number; outputPath: string }>();
 
+function normalizeBuildKey(filePath: string): string {
+    return path.resolve(process.cwd(), filePath);
+}
+
 /**
  * Recursively scan all local imports from an entry file and return
  * the maximum mtime across the entire dependency tree.
@@ -46,44 +50,45 @@ function getTreeMtime(entryPath: string): number {
         visited.add(resolved);
 
         try {
-            const mtime = Bun.file(resolved).lastModified;
+            const stat = Bun.file(resolved);
+            const mtime = stat.lastModified || 0;
             if (mtime > maxMtime) maxMtime = mtime;
-        } catch {
-            return; // File doesn't exist or can't be read
-        }
 
-        // Extract imports using Bun's fast transpiler
-        try {
+            // Only scan source files for imports
+            const ext = path.extname(resolved);
+            if (!['.ts', '.tsx', '.js', '.jsx'].includes(ext)) return;
+
             const source = readFileSync(resolved, 'utf-8');
-            const transpiler = new Bun.Transpiler({ loader: getLoaderForExt(path.extname(resolved)) });
+            const transpiler = new Bun.Transpiler({ loader: getLoaderForExt(ext) });
             const imports = transpiler.scanImports(source);
-            const dir = path.dirname(resolved);
 
             for (const imp of imports) {
-                // Only follow relative imports (local project files)
-                if (!imp.path.startsWith('.')) continue;
+                const importPath = imp.path;
+                // Only follow local relative imports
+                if (!importPath.startsWith('.') && !importPath.startsWith('/')) continue;
 
-                // Try resolving with common extensions
+                const baseDir = path.dirname(resolved);
                 const candidates = [
-                    imp.path,
-                    imp.path + '.ts',
-                    imp.path + '.tsx',
-                    imp.path + '.js',
-                    imp.path + '.jsx',
-                    imp.path + '/index.ts',
-                    imp.path + '/index.tsx',
+                    path.resolve(baseDir, importPath),
+                    path.resolve(baseDir, importPath + '.ts'),
+                    path.resolve(baseDir, importPath + '.tsx'),
+                    path.resolve(baseDir, importPath + '.js'),
+                    path.resolve(baseDir, importPath + '.jsx'),
+                    path.resolve(baseDir, importPath, 'index.ts'),
+                    path.resolve(baseDir, importPath, 'index.tsx'),
+                    path.resolve(baseDir, importPath, 'index.js'),
+                    path.resolve(baseDir, importPath, 'index.jsx'),
                 ];
 
                 for (const candidate of candidates) {
-                    const full = path.resolve(dir, candidate);
-                    if (existsSync(full)) {
-                        walk(full);
+                    if (existsSync(candidate)) {
+                        walk(candidate);
                         break;
                     }
                 }
             }
         } catch {
-            // If transpiler fails, just use the file's own mtime
+            // Ignore unreadable/missing files
         }
     }
 
@@ -260,18 +265,19 @@ function detectServerOnlyPackages(): string[] {
  * in React mode instead (externalized, resolved via import maps).
  */
 export async function buildClientScript(clientPath: string): Promise<string> {
-    const existing = buildInFlight.get(clientPath);
+    const cacheKey = normalizeBuildKey(clientPath);
+    const existing = buildInFlight.get(cacheKey);
     if (existing) return existing;
 
     // Note: measure-fn returns null on error (does NOT re-throw even with onError)
     // so we must check for null result instead of relying on try/catch
-    const promise = buildMeasure(`Client: ${path.basename(clientPath)}`, () => _buildClientScriptImpl(clientPath)) as Promise<string | null>;
-    buildInFlight.set(clientPath, promise as Promise<string>);
+    const promise = buildMeasure(`Client: ${path.basename(clientPath)}`, () => _buildClientScriptImpl(cacheKey)) as Promise<string | null>;
+    buildInFlight.set(cacheKey, promise as Promise<string>);
     try {
         const result = await promise;
         if (result === null) {
             // Build failed — try cache fallback
-            const cached = buildCache[clientPath];
+            const cached = buildCache[cacheKey];
             if (cached) {
                 console.error(`[Melina] Build failed for ${clientPath}, using cached version`);
                 return cached.outputPath;
@@ -280,7 +286,7 @@ export async function buildClientScript(clientPath: string): Promise<string> {
         }
         return result;
     } finally {
-        buildInFlight.delete(clientPath);
+        buildInFlight.delete(cacheKey);
     }
 }
 
@@ -484,24 +490,24 @@ export async function buildScript(filePath: string, allExternal = false): Promis
         throw new Error('File path is required');
     }
 
-    const absolutePath = path.resolve(process.cwd(), filePath);
+    const absolutePath = normalizeBuildKey(filePath);
     if (!existsSync(absolutePath)) {
         throw new Error(`Script not found: ${filePath}`);
     }
 
-    if (!isDev && buildCache[filePath]) {
-        return buildCache[filePath].outputPath;
+    if (!isDev && buildCache[absolutePath]) {
+        return buildCache[absolutePath].outputPath;
     }
 
-    const existing = buildInFlight.get(filePath);
+    const existing = buildInFlight.get(absolutePath);
     if (existing) return existing;
 
-    const promise = buildMeasure(`Script: ${path.basename(filePath)}`, () => _buildScriptImpl(absolutePath, filePath, allExternal), (e: any) => { throw e; }) as Promise<string>;
-    buildInFlight.set(filePath, promise);
+    const promise = buildMeasure(`Script: ${path.basename(filePath)}`, () => _buildScriptImpl(absolutePath, absolutePath, allExternal), (e: any) => { throw e; }) as Promise<string>;
+    buildInFlight.set(absolutePath, promise);
     try {
         return await promise;
     } finally {
-        buildInFlight.delete(filePath);
+        buildInFlight.delete(absolutePath);
     }
 }
 
@@ -603,31 +609,31 @@ export async function buildStyle(filePath: string): Promise<string> {
         throw new Error('File path is required');
     }
 
-    const absolutePath = path.resolve(process.cwd(), filePath);
+    const absolutePath = normalizeBuildKey(filePath);
     if (!existsSync(absolutePath)) {
         throw new Error(`Style not found: ${filePath}`);
     }
 
-    if (!isDev && buildCache[filePath]) {
-        return buildCache[filePath].outputPath;
+    if (!isDev && buildCache[absolutePath]) {
+        return buildCache[absolutePath].outputPath;
     }
 
-    const existing = buildInFlight.get(filePath);
+    const existing = buildInFlight.get(absolutePath);
     if (existing) return existing;
 
-    const promise = buildMeasure(`Style: ${path.basename(filePath)}`, () => _buildStyleImpl(absolutePath, filePath), (e: any) => { throw e; }) as Promise<string>;
-    buildInFlight.set(filePath, promise);
+    const promise = buildMeasure(`Style: ${path.basename(filePath)}`, () => _buildStyleImpl(absolutePath, absolutePath), (e: any) => { throw e; }) as Promise<string>;
+    buildInFlight.set(absolutePath, promise);
     try {
         return await promise;
     } catch (err) {
-        const cached = buildCache[filePath];
+        const cached = buildCache[absolutePath];
         if (cached) {
             console.error(`[Melina] Style build failed for ${filePath}, using cached version:`, (err as Error).message);
             return cached.outputPath;
         }
         throw err;
     } finally {
-        buildInFlight.delete(filePath);
+        buildInFlight.delete(absolutePath);
     }
 }
 
@@ -680,7 +686,8 @@ async function _buildStyleImpl(absolutePath: string, filePath: string): Promise<
     // Update mtime cache for dev mode
     if (isDev) {
         try {
-            const mtime = Bun.file(absolutePath).lastModified;
+            const stat = Bun.file(absolutePath);
+            const mtime = (await stat.stat?.())?.mtimeMs ?? stat.lastModified;
             devMtimeCache.set(absolutePath, { mtime, outputPath });
         } catch { /* ok */ }
     }
@@ -688,15 +695,11 @@ async function _buildStyleImpl(absolutePath: string, filePath: string): Promise<
     return outputPath;
 }
 
-// ─── Scoped Page CSS ────────────────────────────────────────────────────────────
+// ─── Scoped CSS Builder ────────────────────────────────────────────────────────
 
 /**
- * Build a page-scoped CSS file. All selectors are prefixed with
- * `[data-page="/route"]` so styles only apply within that page.
- * 
- * @param filePath Path to the page.css file
- * @param routePattern The route pattern (e.g. "/about")
- * @returns URL path to the built scoped asset
+ * Build route-scoped CSS (page.css / style.css).
+ * Uses the route pattern in the cache key to avoid collisions.
  */
 export async function buildScopedStyle(filePath: string, routePattern: string): Promise<string> {
     const cacheKey = `scoped:${filePath}:${routePattern}`;
@@ -718,45 +721,45 @@ export async function buildScopedStyle(filePath: string, routePattern: string): 
 
 async function _buildScopedStyleImpl(filePath: string, routePattern: string, cacheKey: string): Promise<string> {
     const absolutePath = path.resolve(process.cwd(), filePath);
-    if (!existsSync(absolutePath)) {
-        throw new Error(`Scoped style not found: ${filePath}`);
-    }
+    if (!existsSync(absolutePath)) throw new Error(`Scoped CSS not found: ${filePath}`);
 
     // Dev mtime cache
     if (isDev) {
         try {
-            const mtime = Bun.file(absolutePath).lastModified;
+            const stat = Bun.file(absolutePath);
+            const mtime = (await stat.stat?.())?.mtimeMs ?? stat.lastModified;
             const cached = devMtimeCache.get(cacheKey);
             if (cached && cached.mtime === mtime) return cached.outputPath;
         } catch { /* rebuild */ }
     }
 
+    const ext = path.extname(absolutePath).toLowerCase();
+    const baseName = path.basename(absolutePath, ext);
+    const scopeSlug = routePattern
+        .replace(/^\//, '')
+        .replace(/[^a-zA-Z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'root';
+
     const cssContent = await Bun.file(absolutePath).text();
     const result = await serializedBuild(() =>
         postcss([autoprefixer, tailwind]).process(cssContent, {
             from: absolutePath,
-            to: 'scoped.css',
+            to: 'style.css',
             map: false,
         })
     );
 
-    if (!result.css) throw new Error(`PostCSS returned empty for ${absolutePath}`);
-
-    // Scope selectors: prefix with [data-page="/route"]
-    const scope = `[data-page="${routePattern}"]`;
-    const scopedCss = scopeSelectors(result.css, scope);
-
-    const hash = new Bun.CryptoHasher("sha256").update(scopedCss).digest('hex').slice(0, 8);
-    const baseName = path.basename(absolutePath, path.extname(absolutePath));
-    const outputPath = `/${baseName}-${routePattern.replace(/\//g, '-').replace(/^-/, '')}-${hash}.css`;
-    const content = new TextEncoder().encode(scopedCss).buffer as ArrayBuffer;
-
+    const finalCss = result.css || '';
+    const hash = new Bun.CryptoHasher("sha256").update(finalCss).digest('hex').slice(0, 8);
+    const outputPath = `/${baseName}-${scopeSlug}-${hash}.css`;
+    const content = new TextEncoder().encode(finalCss).buffer as ArrayBuffer;
     buildCache[cacheKey] = { outputPath, content };
     builtAssets[outputPath] = { content, contentType: 'text/css' };
 
     if (isDev) {
         try {
-            const mtime = Bun.file(absolutePath).lastModified;
+            const stat = Bun.file(absolutePath);
+            const mtime = (await stat.stat?.())?.mtimeMs ?? stat.lastModified;
             devMtimeCache.set(cacheKey, { mtime, outputPath });
         } catch { /* ok */ }
     }
@@ -764,111 +767,21 @@ async function _buildScopedStyleImpl(filePath: string, routePattern: string, cac
     return outputPath;
 }
 
-/**
- * Prefix CSS selectors with a scope attribute selector.
- * Handles @-rules, nested blocks, and special selectors.
- */
-function scopeSelectors(css: string, scope: string): string {
-    const lines: string[] = [];
-    let inAtRule = 0; // nesting depth for @media, @supports, etc.
+// ─── CSS Modules Builder ───────────────────────────────────────────────────────
 
-    for (const line of css.split('\n')) {
-        const trimmed = line.trim();
-
-        // Skip empty lines and comments
-        if (!trimmed || trimmed.startsWith('/*') || trimmed.startsWith('*') || trimmed === '*/') {
-            lines.push(line);
-            continue;
-        }
-
-        // @keyframes, @font-face — don't scope
-        if (trimmed.startsWith('@keyframes') || trimmed.startsWith('@font-face')) {
-            lines.push(line);
-            inAtRule++;
-            continue;
-        }
-
-        // @media, @supports, @layer — pass through, scope inner rules
-        if (trimmed.startsWith('@media') || trimmed.startsWith('@supports') || trimmed.startsWith('@layer')) {
-            lines.push(line);
-            if (trimmed.includes('{')) inAtRule++;
-            continue;
-        }
-
-        // Any other @-rule — pass through
-        if (trimmed.startsWith('@')) {
-            lines.push(line);
-            continue;
-        }
-
-        // Track braces for @-rule nesting
-        if (trimmed === '}') {
-            if (inAtRule > 0) inAtRule--;
-            lines.push(line);
-            continue;
-        }
-
-        // Property lines (inside rule block) — pass through
-        if (trimmed.includes(':') && !trimmed.includes('{')) {
-            lines.push(line);
-            continue;
-        }
-
-        // Selector line — prefix with scope
-        if (trimmed.includes('{')) {
-            const selectorPart = trimmed.slice(0, trimmed.indexOf('{')).trim();
-            const rest = trimmed.slice(trimmed.indexOf('{'));
-
-            const scopedSelectors = selectorPart.split(',').map(sel => {
-                sel = sel.trim();
-                if (!sel) return sel;
-                // :root → scope directly
-                if (sel === ':root') return scope;
-                // html, body → scope directly 
-                if (sel === 'html' || sel === 'body') return scope;
-                // Already starts with scope → skip
-                if (sel.startsWith('[data-page')) return sel;
-                // Prefix: .foo → [data-page="/x"] .foo
-                return `${scope} ${sel}`;
-            }).join(', ');
-
-            lines.push(`${scopedSelectors} ${rest}`);
-            continue;
-        }
-
-        // Fallback — pass through
-        lines.push(line);
-    }
-
-    return lines.join('\n');
-}
-
-// ─── CSS Modules ────────────────────────────────────────────────────────────────
-
-/** Result of building a CSS module */
 export interface CSSModuleResult {
-    /** Map of original class names to scoped class names */
-    classMap: Record<string, string>;
-    /** URL path to the built scoped CSS asset */
-    cssUrl: string;
-    /** The scoped CSS content */
     css: string;
+    classMap: Record<string, string>;
+    cssUrl: string;
 }
 
-/** Cache for CSS module results by absolute path */
 const cssModuleCache = new Map<string, CSSModuleResult>();
 
 /**
- * Build a CSS module file (.module.css).
- * 
- * - Parses the CSS and extracts all class names
- * - Generates unique scoped names: `.card` → `.card_abc12345`
- * - Processes through PostCSS (autoprefixer, etc.)
- * - Stores the built CSS as a served asset
- * - Returns the class name map for JS imports
- *
- * @param filePath Path to the .module.css file
- * @returns Object with classMap, cssUrl, and css content
+ * Build a .module.css file:
+ * 1. Processes CSS through PostCSS/Tailwind
+ * 2. Hashes class selectors (`.foo` → `.foo_ab12cd34`)
+ * 3. Returns processed CSS + class name mapping + built asset URL
  */
 export async function buildCSSModule(filePath: string): Promise<CSSModuleResult> {
     const absolutePath = path.resolve(process.cwd(), filePath);
@@ -879,97 +792,87 @@ export async function buildCSSModule(filePath: string): Promise<CSSModuleResult>
     // Dev mtime cache
     if (isDev) {
         try {
-            const mtime = Bun.file(absolutePath).lastModified;
+            const stat = Bun.file(absolutePath);
+            const mtime = (await stat.stat?.())?.mtimeMs ?? stat.lastModified;
             const cached = cssModuleCache.get(absolutePath);
             if (cached) {
                 const devCached = devMtimeCache.get(`cssmod:${absolutePath}`);
                 if (devCached && devCached.mtime === mtime) return cached;
             }
         } catch { /* rebuild */ }
-    } else if (cssModuleCache.has(absolutePath)) {
-        return cssModuleCache.get(absolutePath)!;
+    } else {
+        const cached = cssModuleCache.get(absolutePath);
+        if (cached) return cached;
     }
 
-    const cssContent = await Bun.file(absolutePath).text();
-
-    // Generate a short hash from the file path for scoping
-    const fileHash = new Bun.CryptoHasher("sha256")
-        .update(absolutePath)
-        .digest('hex')
-        .slice(0, 8);
-
-    // Extract class names and build the scope map
-    const classMap: Record<string, string> = {};
-    const classRegex = /\.([a-zA-Z_][\w-]*)/g;
-    let match;
-    while ((match = classRegex.exec(cssContent)) !== null) {
-        const className = match[1];
-        if (!classMap[className]) {
-            classMap[className] = `${className}_${fileHash}`;
-        }
-    }
-
-    // Replace class names in the CSS with scoped versions
-    let scopedCss = cssContent;
-    for (const [original, scoped] of Object.entries(classMap)) {
-        // Replace .className with .className_hash (careful with word boundaries)
-        const pattern = new RegExp(`\\.${original}(?=[^\\w-])`, 'g');
-        scopedCss = scopedCss.replace(pattern, `.${scoped}`);
-    }
-
-    // Process through PostCSS
-    const result = await serializedBuild(() =>
-        postcss([autoprefixer, tailwind]).process(scopedCss, {
+    const rawCss = await Bun.file(absolutePath).text();
+    const processed = await serializedBuild(() =>
+        postcss([autoprefixer, tailwind]).process(rawCss, {
             from: absolutePath,
-            to: 'module.css',
+            to: 'style.css',
             map: false,
         })
     );
 
-    if (!result.css) throw new Error(`PostCSS returned empty for CSS module ${absolutePath}`);
+    let css = processed.css || '';
 
-    const finalCss = result.css;
-    const contentHash = new Bun.CryptoHasher("sha256").update(finalCss).digest('hex').slice(0, 8);
+    // Extract class selectors from the processed CSS.
+    // This is intentionally simple: match `.className` patterns and ignore pseudo-classes.
+    const classRegex = /\.([A-Za-z_][A-Za-z0-9_-]*)/g;
+    const classNames = new Set<string>();
+    let match: RegExpExecArray | null;
+    while ((match = classRegex.exec(css)) !== null) {
+        const name = match[1];
+        if (name === 'css') continue; // avoid accidental matches like .css in comments/urls
+        classNames.add(name);
+    }
+
+    const fileHash = new Bun.CryptoHasher('sha256').update(absolutePath).digest('hex').slice(0, 8);
+    const classMap: Record<string, string> = {};
+    for (const original of classNames) {
+        classMap[original] = `${original}_${fileHash}`;
+    }
+
+    // Replace selectors in CSS with hashed versions
+    for (const [original, scoped] of Object.entries(classMap)) {
+        const selectorRegex = new RegExp(`\\.${original}(?![A-Za-z0-9_-])`, 'g');
+        css = css.replace(selectorRegex, `.${scoped}`);
+    }
+
+    const cssHash = new Bun.CryptoHasher('sha256').update(css).digest('hex').slice(0, 8);
     const baseName = path.basename(absolutePath, '.module.css');
-    const cssUrl = `/${baseName}.module-${contentHash}.css`;
-    const content = new TextEncoder().encode(finalCss).buffer as ArrayBuffer;
-
+    const cssUrl = `/${baseName}-module-${cssHash}.css`;
+    const content = new TextEncoder().encode(css).buffer as ArrayBuffer;
     builtAssets[cssUrl] = { content, contentType: 'text/css' };
 
-    const moduleResult: CSSModuleResult = { classMap, cssUrl, css: finalCss };
-    cssModuleCache.set(absolutePath, moduleResult);
+    const result: CSSModuleResult = { css, classMap, cssUrl };
+    cssModuleCache.set(absolutePath, result);
 
     // Update dev mtime cache
     if (isDev) {
         try {
-            const mtime = Bun.file(absolutePath).lastModified;
+            const stat = Bun.file(absolutePath);
+            const mtime = (await stat.stat?.())?.mtimeMs ?? stat.lastModified;
             devMtimeCache.set(`cssmod:${absolutePath}`, { mtime, outputPath: cssUrl });
         } catch { /* ok */ }
     }
 
-    return moduleResult;
+    return result;
 }
 
-
-// ─── Static Asset Builder ───────────────────────────────────────────────────────
+// ─── Static Asset Builder ──────────────────────────────────────────────────────
 
 /**
- * Build static assets (images, fonts, etc.) from BunFile.
- * @param file BunFile object
- * @returns URL path to the built asset
+ * Build a static asset (image, font, etc) by storing it in memory with a hashed URL.
  */
 export async function buildAsset(file?: BunFile): Promise<string> {
-    if (!file) {
-        return '';
-    }
+    if (!file) return '';
 
-    const filePath = file.name || '';
+    const filePath = (file as any).name || '';
     if (!filePath) {
         throw new Error('BunFile object must have a name property');
     }
-
-    const fileExists = await file.exists();
-    if (!fileExists) {
+    if (!existsSync(filePath)) {
         throw new Error(`Asset not found: ${filePath}`);
     }
 
@@ -990,21 +893,19 @@ export async function buildAsset(file?: BunFile): Promise<string> {
 }
 
 async function _buildAssetImpl(file: BunFile, filePath: string): Promise<string> {
-
-    const ext = path.extname(filePath).toLowerCase();
+    const bytes = await file.arrayBuffer();
+    const hash = new Bun.CryptoHasher('sha256').update(bytes).digest('hex').slice(0, 8);
+    const ext = path.extname(filePath);
     const baseName = path.basename(filePath, ext);
-
-    const content = await file.arrayBuffer();
-    const hash = new Bun.CryptoHasher("sha256").update(new Uint8Array(content)).digest('hex').slice(0, 8);
     const outputPath = `/${baseName}-${hash}${ext}`;
-    const contentType = getContentType(ext);
+    const contentType = file.type || getContentType(ext);
 
+    const content = bytes;
     buildCache[filePath] = { outputPath, content };
     builtAssets[outputPath] = { content, contentType };
+
     return outputPath;
 }
-
-// ─── Legacy Asset Function ──────────────────────────────────────────────────────
 
 /** @deprecated Use buildScript(), buildStyle(), or buildAsset() instead. */
 export async function asset(fileOrPath: BunFile | string): Promise<string> {
