@@ -311,7 +311,6 @@ async function _buildClientScriptImpl(clientPath: string): Promise<string> {
     const usesReact = /\bfrom\s+['"]react(?:-dom)?(?:\/[^'"]*)?['"]/.test(source)
         || /\brequire\s*\(\s*['"]react/.test(source);
 
-    const jsxDomPath = path.resolve(__dirname, '../client/jsx-dom.ts');
     const clientIndexPath = path.resolve(__dirname, '../client/index.ts');
     const jsxDevRuntimePath = path.resolve(__dirname, '../client/jsx-dev-runtime.ts');
     const jsxRuntimePath = path.resolve(__dirname, '../client/jsx-runtime.ts');
@@ -365,20 +364,23 @@ export { stub as Api, stub as sessions };
         clientScriptsUsingReact.add(clientPath);
     } else {
         plugins.push({
-            name: 'melina-jsx-dom',
+            name: 'melina-client-jsx-runtime',
             setup(build: any) {
-                // react/* JSX → jsx-dom.ts (real DOM elements)
-                build.onResolve({ filter: /^react\/jsx-runtime$|^react\/jsx-dev-runtime$|^react$/ }, () => {
-                    return { path: jsxDomPath };
+                // Bun currently emits react/jsx-*-runtime imports for TSX client scripts.
+                // Route those imports to Melina's VDOM runtime so JSX produces VNodes
+                // for render(), not real DOM nodes from jsx-dom.
+                build.onResolve({ filter: /^react\/jsx-runtime$/ }, () => {
+                    return { path: jsxRuntimePath };
                 });
-                // melina/client/jsx-*-runtime → VDOM runtime (VNodes for render())
+                build.onResolve({ filter: /^react\/jsx-dev-runtime$/ }, () => {
+                    return { path: jsxDevRuntimePath };
+                });
                 build.onResolve({ filter: /^melina\/client\/jsx-dev-runtime$/ }, () => {
                     return { path: jsxDevRuntimePath };
                 });
                 build.onResolve({ filter: /^melina\/client\/jsx-runtime$/ }, () => {
                     return { path: jsxRuntimePath };
                 });
-                // melina/client → actual client barrel
                 build.onResolve({ filter: /^melina\/client$/ }, () => {
                     return { path: clientIndexPath };
                 });
