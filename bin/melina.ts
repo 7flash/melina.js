@@ -73,14 +73,41 @@ fs.mkdirSync(appDir, { recursive: true });
 // ─── Templates ─────────────────────────────────────────────────────────────────
 
 const files: Record<string, string> = {
-    'server.ts': `import { start } from 'melina';
-import path from 'path';
+    'package.json': `{
+    "name": "${projectName === '.' ? 'my-app' : projectName.toLowerCase().replace(/[^a-z0-9-]/g, '-')}",
+    "version": "0.1.0",
+    "type": "module",
+    "scripts": {
+        "dev": "bun run server.ts",
+        "build": "melina build",
+        "start": "bun run server.ts"
+    },
+    "dependencies": {
+        "melina": "latest"
+    },
+    "devDependencies": {
+        "@tailwindcss/vite": "^4.0.0",
+        "tailwindcss": "^4.0.0"
+    }
+}
+`,
 
-await start({
-    port: parseInt(process.env.BUN_PORT || "3000"),
-    appDir: path.join(import.meta.dir, 'app'),
-    defaultTitle: '${projectName === '.' ? 'My App' : projectName}',
-});
+    '.gitignore': `# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Runtime
+.DS_Store
+*.log
+bun.lockb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 `,
 
     'tsconfig.json': `{
@@ -96,6 +123,16 @@ await start({
     },
     "include": ["app/**/*", "server.ts"]
 }
+`,
+
+    'server.ts': `import { start } from 'melina';
+import path from 'path';
+
+await start({
+    port: parseInt(process.env.BUN_PORT || "3000"),
+    appDir: path.join(import.meta.dir, 'app'),
+    defaultTitle: '${projectName === '.' ? 'My App' : projectName}',
+});
 `,
 
     'app/layout.tsx': `export default function RootLayout({ children }: { children: any }) {
@@ -198,10 +235,33 @@ for (const [filePath, content] of Object.entries(files)) {
 const displayName = projectName === '.' ? 'current directory' : projectName;
 console.log(`
 🦊 Project scaffolded in ${displayName} (${written} files)
+`);
+
+// Run bun install automatically
+console.log('  install  dependencies...');
+const { spawn } = await import('child_process');
+
+await new Promise<void>((resolve, reject) => {
+    const install = spawn('bun', ['install'], {
+        cwd: targetDir,
+        stdio: 'inherit',
+        shell: true,
+    });
+
+    install.on('close', (code) => {
+        if (code === 0) {
+            resolve();
+        } else {
+            reject(new Error(`bun install exited with code ${code}`));
+        }
+    });
+});
+
+console.log(`
+🦊 Done!
 
 Next steps:
-  ${projectName !== '.' ? `cd ${projectName}\n  ` : ''}bun install
-  bun run server.ts
+  ${projectName !== '.' ? `cd ${projectName}\n  ` : ''}bun run dev
 
 Open http://localhost:3000 to see your app.
 `);
