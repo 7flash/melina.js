@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeEach, afterAll } from "bun:test";
-import { buildScript, buildStyle, buildAsset, asset, serve, clearCaches } from "../src/web";
+import { buildScript, buildStyle, buildAsset, asset, serve, clearCaches, createAppRouter } from "../src/web";
 import { imports } from "../src/server/imports";
 import { writeFileSync, mkdirSync, rmSync } from "fs";
 import path from "path";
@@ -428,6 +428,43 @@ describe("serve", () => {
     } finally {
       server.stop();
     }
+  });
+
+  test("should stream full page responses in shell, body, and tail chunks", async () => {
+    const appDir = path.join(testDir, "stream-app");
+    mkdirSync(appDir, { recursive: true });
+
+    writeFileSync(path.join(appDir, "layout.tsx"), `
+      export default function RootLayout({ children }: { children: any }) {
+        return <html><head><title>Stream Test</title></head><body><main id="melina-page-content">{children}</main></body></html>;
+      }
+    `);
+    writeFileSync(path.join(appDir, "page.tsx"), `
+      export default function StreamPage() {
+        return <section>Body Chunk</section>;
+      }
+    `);
+
+    const handler = createAppRouter({ appDir });
+    const measure = async (_label: string, fn: () => any) => await fn();
+    const response = await handler(new Request("http://tradjs.test/"), measure as any) as Response;
+
+    expect(response.body).toBeTruthy();
+
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    const chunks: string[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+
+    expect(chunks.length).toBe(3);
+    expect(chunks[0]).toContain("<html>");
+    expect(chunks[1]).toBe("<section>Body Chunk</section>");
+    expect(chunks[2]).toContain("</main></body></html>");
   });
 
   test("should fall back to root route files when app dir is absent", async () => {

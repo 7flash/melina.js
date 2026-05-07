@@ -20,6 +20,23 @@ import { serve as serveHttp } from "./serve";
 import type { Handler, FrontendAppOptions, RenderPageOptions, AppRouterOptions } from "./types";
 
 const isDev = process.env.NODE_ENV !== "production";
+const STREAM_SLOT_MARKUP = '<tradjs-stream-slot></tradjs-stream-slot>';
+
+async function wrapWithLayouts(tree: any, layoutPaths: string[]) {
+    let wrappedTree = tree;
+
+    for (let i = layoutPaths.length - 1; i >= 0; i--) {
+        const layoutPath = layoutPaths[i];
+        const layoutModule = await import(layoutPath);
+        const LayoutComponent = layoutModule.default;
+
+        if (LayoutComponent) {
+            wrappedTree = createElement(LayoutComponent, { children: wrappedTree });
+        }
+    }
+
+    return wrappedTree;
+}
 
 // ─── SPA / Legacy Frontend ──────────────────────────────────────────────────────
 
@@ -368,21 +385,7 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
                 throw new Error(`No default export found in ${match.route.filePath}`);
             }
 
-            let tree = createElement(PageComponent, { params: match.params });
-
-            for (let i = match.route.layouts.length - 1; i >= 0; i--) {
-                const layoutPath = match.route.layouts[i];
-                const layoutModule = await import(layoutPath);
-                const LayoutComponent = layoutModule.default;
-
-                if (LayoutComponent) {
-                    tree = createElement(LayoutComponent, { children: tree });
-                }
-            }
-
-            resetHead(); // Clear head elements from previous render
-            const html = await m('SSR renderToString', () => renderToString(tree), (e: any) => { throw e; });
-            const headElements = getHeadElements(); // Collect <Head> children
+            const pageTree = createElement(PageComponent, { params: match.params });
 
             let stylesVirtualPath = '';
             if (globalCss) {
@@ -457,41 +460,51 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
                     console.warn('Failed to generate React import maps:', e);
                 }
             }
-
-            let fullHtml = `<!DOCTYPE html>${html}`;
-
-            if (stylesVirtualPath) {
-                fullHtml = fullHtml.replace('</head>', `<link rel="stylesheet" href="${stylesVirtualPath}"></head>`);
+            if (isDev && hotReload) {
+                for (const clientPath of allClientPaths) {
+                    const deps = getClientDeps(clientPath);
+                    addClientScript(clientPath, deps);
+                }
             }
 
-            // Inject page-scoped CSS
-            if (scopedStylePath) {
-                fullHtml = fullHtml.replace('</head>', `<link rel="stylesheet" href="${scopedStylePath}"></head>`);
-            }
+            const responseHeaders = {
+                'Content-Type': 'text/html',
+                'Cache-Control': isDev ? 'no-cache' : 'public, max-age=3600',
+            };
 
-            // Add data-page attribute for scoped CSS targeting
-            fullHtml = fullHtml.replace(
-                'id="melina-page-content"',
-                `id="melina-page-content" data-page="${match.route.pattern}"`
-            );
+            if (isNavRequest) {
+                const tree = await wrapWithLayouts(pageTree, match.route.layouts);
 
-            // Inject <Head> elements (title, meta, etc.)
-            if (headElements.length > 0) {
-                fullHtml = fullHtml.replace('</head>', `${headElements.join('\n')}</head>`);
-            }
+                resetHead();
+                const html = await m('SSR renderToString', () => renderToString(tree), (e: any) => { throw e; });
+                const headElements = getHeadElements();
 
-            if (importMapTag) {
-                fullHtml = fullHtml.replace('</head>', `${importMapTag}</head>`);
-            }
+                let fullHtml = `<!DOCTYPE html>${html}`;
 
-            if (clientScriptTags.length > 0) {
-                if (isNavRequest) {
-                    // Nav requests: inject page scripts INSIDE #melina-page-content
-                    // so the layout-preserving navigate() picks them up when swapping.
-                    // Find the closing tag of the #melina-page-content element.
+                if (stylesVirtualPath) {
+                    fullHtml = fullHtml.replace('</head>', `<link rel="stylesheet" href="${stylesVirtualPath}"></head>`);
+                }
+
+                if (scopedStylePath) {
+                    fullHtml = fullHtml.replace('</head>', `<link rel="stylesheet" href="${scopedStylePath}"></head>`);
+                }
+
+                fullHtml = fullHtml.replace(
+                    'id="melina-page-content"',
+                    `id="melina-page-content" data-page="${match.route.pattern}"`
+                );
+
+                if (headElements.length > 0) {
+                    fullHtml = fullHtml.replace('</head>', `${headElements.join('\n')}</head>`);
+                }
+
+                if (importMapTag) {
+                    fullHtml = fullHtml.replace('</head>', `${importMapTag}</head>`);
+                }
+
+                if (clientScriptTags.length > 0) {
                     const contentIdx = fullHtml.indexOf('id="melina-page-content"');
                     if (contentIdx >= 0) {
-                        // Find the matching closing </main> after the id
                         const closingMainIdx = fullHtml.indexOf('</main>', contentIdx);
                         if (closingMainIdx >= 0) {
                             fullHtml = fullHtml.slice(0, closingMainIdx)
@@ -503,29 +516,90 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
                     } else {
                         fullHtml = fullHtml.replace('</body>', `${clientScriptTags.join('\n')}</body>`);
                     }
-                } else {
+                }
+
+                const hmrScript = hotReload ? getHotReloadScript() : '';
+                if (hmrScript) {
+                    fullHtml = fullHtml.replace('</body>', `${hmrScript}</body>`);
+                }
+
+                return new Response(fullHtml, { headers: responseHeaders });
+            }
+
+            resetHead();
+            const pageHtml = await m('SSR renderPage', () => renderToString(pageTree), (e: any) => { throw e; });
+            const pageHeadElements = [...getHeadElements()];
+
+            const slotTree = await wrapWithLayouts(createElement('tradjs-stream-slot', {}), match.route.layouts);
+
+            resetHead();
+            const shellHtmlOnly = await m('SSR renderShell', () => renderToString(slotTree), (e: any) => { throw e; });
+            const layoutHeadElements = [...getHeadElements()];
+            const headElements = [...layoutHeadElements, ...pageHeadElements];
+
+            let shellHtml = `<!DOCTYPE html>${shellHtmlOnly}`;
+
+            if (stylesVirtualPath) {
+                shellHtml = shellHtml.replace('</head>', `<link rel="stylesheet" href="${stylesVirtualPath}"></head>`);
+            }
+
+            if (scopedStylePath) {
+                shellHtml = shellHtml.replace('</head>', `<link rel="stylesheet" href="${scopedStylePath}"></head>`);
+            }
+
+            shellHtml = shellHtml.replace(
+                'id="melina-page-content"',
+                `id="melina-page-content" data-page="${match.route.pattern}"`
+            );
+
+            if (headElements.length > 0) {
+                shellHtml = shellHtml.replace('</head>', `${headElements.join('\n')}</head>`);
+            }
+
+            if (importMapTag) {
+                shellHtml = shellHtml.replace('</head>', `${importMapTag}</head>`);
+            }
+
+            const slotIndex = shellHtml.indexOf(STREAM_SLOT_MARKUP);
+
+            if (slotIndex === -1) {
+                let fullHtml = shellHtml + pageHtml;
+
+                if (clientScriptTags.length > 0) {
                     fullHtml = fullHtml.replace('</body>', `${clientScriptTags.join('\n')}</body>`);
                 }
+
+                const hmrScript = hotReload ? getHotReloadScript() : '';
+                if (hmrScript) {
+                    fullHtml = fullHtml.replace('</body>', `${hmrScript}</body>`);
+                }
+
+                return new Response(fullHtml, { headers: responseHeaders });
             }
 
-            // Inject HMR script (dev only) and register client scripts for watching
+            const prefix = shellHtml.slice(0, slotIndex);
+            let suffix = shellHtml.slice(slotIndex + STREAM_SLOT_MARKUP.length);
+
+            if (clientScriptTags.length > 0) {
+                suffix = suffix.replace('</body>', `${clientScriptTags.join('\n')}</body>`);
+            }
+
             const hmrScript = hotReload ? getHotReloadScript() : '';
             if (hmrScript) {
-                fullHtml = fullHtml.replace('</body>', `${hmrScript}</body>`);
-            }
-            if (isDev && hotReload) {
-                for (const clientPath of allClientPaths) {
-                    const deps = getClientDeps(clientPath);
-                    addClientScript(clientPath, deps);
-                }
+                suffix = suffix.replace('</body>', `${hmrScript}</body>`);
             }
 
-            return new Response(fullHtml, {
-                headers: {
-                    'Content-Type': 'text/html',
-                    'Cache-Control': isDev ? 'no-cache' : 'public, max-age=3600',
+            const encoder = new TextEncoder();
+            const stream = new ReadableStream({
+                start(controller) {
+                    controller.enqueue(encoder.encode(prefix));
+                    controller.enqueue(encoder.encode(pageHtml));
+                    controller.enqueue(encoder.encode(suffix));
+                    controller.close();
                 },
             });
+
+            return new Response(stream, { headers: responseHeaders });
         } catch (error: any) {
             console.error('Error rendering page:', error);
             const errorMessage = error?.message || String(error);
