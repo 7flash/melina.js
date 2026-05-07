@@ -1,5 +1,5 @@
 /**
- * melina/client — Types
+ * tradjs/client — Types
  * 
  * Shared type definitions for both client and server rendering.
  * This file has zero runtime code and is fully tree-shakeable.

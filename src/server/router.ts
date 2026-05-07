@@ -177,6 +177,17 @@ export interface DiscoverRoutesOptions {
     quiet?: boolean;
 }
 
+const IGNORED_DIR_NAMES = new Set([
+    'node_modules',
+    '.git',
+    'dist',
+    'package',
+    '.melina',
+    '.prompts',
+    '.vscode',
+    '.idea',
+]);
+
 export function discoverRoutes(appDir: string, options: DiscoverRoutesOptions = {}): Route[] {
     const discover = () => {
         const routes: Route[] = [];
@@ -190,6 +201,9 @@ export function discoverRoutes(appDir: string, options: DiscoverRoutesOptions = 
                     const stats = statSync(fullPath);
 
                     if (stats.isDirectory()) {
+                        if (IGNORED_DIR_NAMES.has(entry)) {
+                            continue;
+                        }
                         scanDir(fullPath);
                     } else if (entry.match(/^page\.(tsx?|jsx?)$/)) {
                         const { pattern, paramNames } = filePathToPattern(fullPath, appDir);

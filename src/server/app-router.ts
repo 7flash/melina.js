@@ -16,7 +16,7 @@ import { imports } from "./imports";
 import { buildScript, buildStyle, buildClientScript, clientScriptsUsingReact, builtAssets, getContentType, buildScopedStyle, buildAsset } from './build';
 import { getHotReloadScript, addClientScript, getClientDeps } from './hot-reload';
 import { getPrerendered, prerender as ssgPrerender } from "./ssg";
-import { serve } from "./serve";
+import { serve as serveHttp } from "./serve";
 import type { Handler, FrontendAppOptions, RenderPageOptions, AppRouterOptions } from "./types";
 
 const isDev = process.env.NODE_ENV !== "production";
@@ -207,7 +207,7 @@ export async function renderPage(options: RenderPageOptions): Promise<string> {
  *
  * @example
  * ```ts
- * import { serve, createAppRouter } from 'melina/web';
+ * import { serve, createAppRouter } from 'tradjs/web';
  * 
  * serve(createAppRouter({
  *   appDir: './app',
@@ -594,18 +594,86 @@ export function createAppRouter(options: AppRouterOptions = {}): Handler {
 
 // ─── Quick Start ────────────────────────────────────────────────────────────────
 
+const DEFAULT_APP_DIR_NAME = 'app';
+
+function hasConventionRoutes(dir: string): boolean {
+    const routeSignals = [
+        'page.tsx',
+        'page.ts',
+        'page.jsx',
+        'page.js',
+        'layout.tsx',
+        'layout.ts',
+        'layout.jsx',
+        'layout.js',
+        'middleware.ts',
+        'middleware.tsx',
+        'middleware.js',
+        'error.tsx',
+        'error.ts',
+        'loading.tsx',
+        'loading.ts',
+    ];
+
+    if (existsSync(path.join(dir, 'api'))) {
+        return true;
+    }
+
+    return routeSignals.some(file => existsSync(path.join(dir, file)));
+}
+
+export function resolveAppDir(appDir?: string): string {
+    if (appDir) {
+        return path.isAbsolute(appDir) ? appDir : path.resolve(process.cwd(), appDir);
+    }
+
+    const defaultAppDir = path.resolve(process.cwd(), DEFAULT_APP_DIR_NAME);
+    if (existsSync(defaultAppDir)) {
+        return defaultAppDir;
+    }
+
+    const cwd = process.cwd();
+    if (hasConventionRoutes(cwd)) {
+        return cwd;
+    }
+
+    throw new Error(
+        `Could not find a TradJS app. Looked for ./${DEFAULT_APP_DIR_NAME}/ first, then route files in ${cwd}.`
+    );
+}
+
+export interface ServeAppOptions extends AppRouterOptions {
+    port?: number;
+    unix?: string;
+}
+
+export async function serve(options?: ServeAppOptions): Promise<any>;
+export async function serve(handler: Handler, options?: { port?: number; unix?: string; websocket?: any; hotReload?: boolean }): Promise<any>;
+export async function serve(
+    handlerOrOptions?: Handler | ServeAppOptions,
+    serverOptions?: { port?: number; unix?: string; websocket?: any; hotReload?: boolean }
+) {
+    if (typeof handlerOrOptions === 'function') {
+        return serveHttp(handlerOrOptions, serverOptions);
+    }
+
+    const options = handlerOrOptions ?? {};
+    const { port, unix, hotReload = false, ...routerOptions } = options;
+    const appDir = resolveAppDir(routerOptions.appDir);
+    const router = createAppRouter({ ...routerOptions, appDir, hotReload });
+    return serveHttp(router, { port, unix, hotReload });
+}
+
 /**
- * Start a Melina server with file-based routing in one call.
+ * Start a TradJS server with file-based routing in one call.
  * Combines createAppRouter() + serve() for convenience.
  *
  * @example
  * ```ts
- * import { start } from 'melina';
+ * import { start } from 'tradjs';
  * await start({ appDir: './app', port: 3000 });
  * ```
  */
-export async function start(options: AppRouterOptions & { port?: number; unix?: string } = {}) {
-    const { port, unix, hotReload = false, ...routerOptions } = options;
-    const router = createAppRouter({ ...routerOptions, hotReload });
-    return serve(router, { port, unix, hotReload });
+export async function start(options: ServeAppOptions = {}) {
+    return serve(options);
 }

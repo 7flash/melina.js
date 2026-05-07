@@ -1,5 +1,5 @@
-import { render, setReconciler, getReconciler } from 'melina/client';
-import type { ReconcilerName } from 'melina/client';
+import { render, setReconciler, getReconciler } from 'tradjs/client';
+import type { ReconcilerName } from 'tradjs/client';
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 

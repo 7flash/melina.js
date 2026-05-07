@@ -33,7 +33,7 @@ let _debounceTimer: ReturnType<typeof setTimeout> | null = null;
  */
 export function startHotReload(): void {
     if (!isDev || _watcher) return;
-    console.log('[Melina HMR] Hot reload enabled');
+    console.log('[tradjs HMR] Hot reload enabled');
 }
 
 /**
@@ -144,7 +144,7 @@ export function getHotReloadScript(): string {
         es = new EventSource('/__melina_hmr');
         es.onmessage = function(e) {
             if (e.data === 'reload') {
-                console.log('[Melina HMR] Reloading...');
+                console.log('[tradjs HMR] Reloading...');
                 window.location.reload();
             }
         };
@@ -192,7 +192,7 @@ function _onFileChanged(filePath: string) {
     _debounceTimer = setTimeout(() => {
         const scripts = _fileToScripts.get(filePath);
         const scriptNames = scripts ? [...scripts].map(s => path.basename(s)).join(', ') : path.basename(filePath);
-        console.log(`[Melina HMR] Change detected: ${path.basename(filePath)} → rebuilding ${scriptNames}`);
+        console.log(`[tradjs HMR] Change detected: ${path.basename(filePath)} → rebuilding ${scriptNames}`);
 
         // Notify all connected browsers
         const message = new TextEncoder().encode('data: reload\n\n');

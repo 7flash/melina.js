@@ -1,5 +1,5 @@
 /**
- * melina/client/reconcilers — Pluggable Reconciliation Strategies
+ * tradjs/client/reconcilers — Pluggable Reconciliation Strategies
  * 
  * Available strategies:
  *   - `sequentialReconciler` — O(n) index-based (forms, static layouts)
@@ -7,7 +7,7 @@
  *   - `autoReconciler`       — Auto-selects based on key presence (default)
  * 
  * Usage:
- *   import { setReconciler, keyedReconciler } from 'melina/client/reconcilers';
+ *   import { setReconciler, keyedReconciler } from 'tradjs/client/reconcilers';
  *   setReconciler(keyedReconciler); // force keyed for all diffs
  */
 

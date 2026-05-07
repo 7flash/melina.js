@@ -1,5 +1,5 @@
 /**
- * melina/client — Public API
+ * tradjs/client — Public API
  * 
  * This barrel re-exports from separated modules:
  * 
@@ -10,8 +10,8 @@
  * SSR (renderToString) lives at src/ssr.ts — NOT here. The client directory
  * is bundled for the browser, and SSR code must never appear in client bundles.
  * 
- * Server code (src/web.ts) imports renderToString from 'melina/ssr' or '../ssr'.
- * Client code (page.client.tsx) imports { render } from 'melina/client'.
+ * Server code (src/web.ts) imports renderToString from 'tradjs/ssr' or '../ssr'.
+ * Client code (page.client.tsx) imports { render } from 'tradjs/client'.
  */
 
 // Types + Fragment symbol

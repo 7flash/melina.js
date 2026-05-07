@@ -1,5 +1,5 @@
 /**
- * melina/client — Client-Side Renderer
+ * tradjs/client — Client-Side Renderer
  * 
  * Pluggable VDOM reconciler with replaceable diffing strategies:
  * 
@@ -682,7 +682,7 @@ export const jsxs = jsx;
 export const jsxDEV = jsx;
 
 // ─── Auto-init for link interception ───────────────────────────────────────────
-// Guard: melina/client may be bundled into multiple scripts (layout + page).
+// Guard: tradjs/client may be bundled into multiple scripts (layout + page).
 // Without this guard, each bundle registers its own click interceptor,
 // causing duplicate fetches on every navigation.
 

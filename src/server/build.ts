@@ -190,12 +190,12 @@ function formatUnknownError(error: unknown): string {
 }
 
 function makeDetailedError(context: string, error: unknown): Error {
-    if (error instanceof Error && error.message.startsWith(`[Melina] ${context}`)) {
+    if (error instanceof Error && error.message.startsWith(`[tradjs] ${context}`)) {
         return error;
     }
 
     const details = formatUnknownError(error);
-    return new Error(`[Melina] ${context} failed\n\n${details}`);
+    return new Error(`[tradjs] ${context} failed\n\n${details}`);
 }
 
 /**
@@ -228,7 +228,7 @@ async function measured<T>(label: string, fn: () => Promise<T>): Promise<T> {
     }
 
     if (result === null || result === undefined) {
-        throw new Error(`[Melina] ${label} failed without returning a result`);
+        throw new Error(`[tradjs] ${label} failed without returning a result`);
     }
 
     return result;
@@ -242,9 +242,9 @@ function printBuildLogs(context: string, logs: any[] | undefined | null) {
         if (!formatted) continue;
 
         if (log.level === "error") {
-            console.error(`[Melina Build Error] ${context}\n${formatted}`);
+            console.error(`[tradjs Build Error] ${context}\n${formatted}`);
         } else if (log.level === "warning") {
-            console.warn(`[Melina Build Warning] ${context}\n${formatted}`);
+            console.warn(`[tradjs Build Warning] ${context}\n${formatted}`);
         }
     }
 }
@@ -263,7 +263,7 @@ async function runBunBuild(config: BuildConfig, context: string) {
     if ((result as any).success === false) {
         const logs = formatBuildLogs((result as any).logs);
         throw new Error(
-            `[Melina] ${context} failed\n\n${logs || "Bun build returned success=false without logs"}`
+            `[tradjs] ${context} failed\n\n${logs || "Bun build returned success=false without logs"}`
         );
     }
 
@@ -453,7 +453,7 @@ function escapeRegExp(input: string): string {
 
 /**
  * Auto-detect server-only packages by scanning node_modules for packages
- * that use `bun:*` imports. Also reads `melina.serverOnly`.
+ * that use `bun:*` imports. Also reads `tradjs.serverOnly`.
  */
 function detectServerOnlyPackages(): string[] {
     if (_detectedServerPackages) return _detectedServerPackages;
@@ -465,7 +465,7 @@ function detectServerOnlyPackages(): string[] {
 
         if (existsSync(pkgPath)) {
             const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-            const configList = pkg?.melina?.serverOnly;
+            const configList = pkg?.tradjs?.serverOnly ?? pkg?.fastjs?.serverOnly ?? pkg?.lastjs?.serverOnly ?? pkg?.melina?.serverOnly;
 
             if (Array.isArray(configList)) {
                 for (const name of configList) {
@@ -512,7 +512,7 @@ function detectServerOnlyPackages(): string[] {
         }
     } catch (error) {
         console.warn(
-            `[Melina] Failed to auto-detect server packages, using defaults:\n${formatUnknownError(error)}`
+            `[tradjs] Failed to auto-detect server packages, using defaults:\n${formatUnknownError(error)}`
         );
     }
 
@@ -520,7 +520,7 @@ function detectServerOnlyPackages(): string[] {
 
     if (isDev) {
         console.warn(
-            `[Melina] Server-only packages stubbed for browser: ${_detectedServerPackages.join(", ")}`
+            `[tradjs] Server-only packages stubbed for browser: ${_detectedServerPackages.join(", ")}`
         );
     }
 
@@ -552,7 +552,7 @@ export async function buildClientScript(clientPath: string): Promise<string> {
 
             if (cached) {
                 console.error(
-                    `[Melina] Client build failed for ${clientPath}; using cached version.\n\n${formatUnknownError(error)}`
+                    `[tradjs] Client build failed for ${clientPath}; using cached version.\n\n${formatUnknownError(error)}`
                 );
 
                 return cached.outputPath;
@@ -636,7 +636,7 @@ async function _buildClientScriptImpl(clientPath: string): Promise<string> {
     const serverOnlyPackages = detectServerOnlyPackages();
 
     plugins.push({
-        name: "melina-server-stub",
+        name: "tradjs-server-stub",
 
         setup(build: any) {
             const filter = new RegExp(
@@ -687,7 +687,7 @@ export { stub as Api, stub as sessions };
         clientScriptsUsingReact.add(clientPath);
     } else {
         plugins.push({
-            name: "melina-client-jsx-runtime",
+            name: "tradjs-client-jsx-runtime",
 
             setup(build: any) {
                 build.onResolve({ filter: /^react\/jsx-runtime$/ }, () => {
@@ -698,15 +698,15 @@ export { stub as Api, stub as sessions };
                     return { path: jsxDevRuntimePath };
                 });
 
-                build.onResolve({ filter: /^melina\/client\/jsx-dev-runtime$/ }, () => {
+                build.onResolve({ filter: /^(tradjs|fastjs|lastjs|melina)\/client\/jsx-dev-runtime$/ }, () => {
                     return { path: jsxDevRuntimePath };
                 });
 
-                build.onResolve({ filter: /^melina\/client\/jsx-runtime$/ }, () => {
+                build.onResolve({ filter: /^(tradjs|fastjs|lastjs|melina)\/client\/jsx-runtime$/ }, () => {
                     return { path: jsxRuntimePath };
                 });
 
-                build.onResolve({ filter: /^melina\/client$/ }, () => {
+                build.onResolve({ filter: /^(tradjs|fastjs|lastjs|melina)\/client$/ }, () => {
                     return { path: clientIndexPath };
                 });
             },
@@ -714,7 +714,7 @@ export { stub as Api, stub as sessions };
     }
 
     plugins.push({
-        name: "melina-css-modules",
+        name: "tradjs-css-modules",
 
         setup(build: any) {
             build.onResolve({ filter: /\.module\.css$/ }, (args: any) => {
@@ -787,7 +787,7 @@ ${mapEntries}
     const mainOutput = result.outputs.find(o => o.kind === "entry-point");
 
     if (!mainOutput) {
-        throw new Error(`[Melina] Client bundle ${clientPath} failed: no entry-point output found`);
+        throw new Error(`[tradjs] Client bundle ${clientPath} failed: no entry-point output found`);
     }
 
     for (const output of result.outputs) {
@@ -898,7 +898,7 @@ async function _buildScriptImpl(
     const mainOutput = result.outputs.find(o => o.kind === "entry-point");
 
     if (!mainOutput) {
-        throw new Error(`[Melina] Script bundle ${filePath} failed: no entry-point output found`);
+        throw new Error(`[tradjs] Script bundle ${filePath} failed: no entry-point output found`);
     }
 
     for (const output of result.outputs) {
@@ -953,7 +953,7 @@ export async function buildStyle(filePath: string): Promise<string> {
 
             if (cached) {
                 console.error(
-                    `[Melina] Style build failed for ${filePath}; using cached version.\n\n${formatUnknownError(error)}`
+                    `[tradjs] Style build failed for ${filePath}; using cached version.\n\n${formatUnknownError(error)}`
                 );
 
                 return cached.outputPath;

@@ -36,14 +36,16 @@ export {
 export type { CSSModuleResult } from "./build";
 
 // HTTP server
-export { serve, findAvailablePort } from "./serve";
+export { serve as serveHttp, findAvailablePort } from "./serve";
 
 // App router & page rendering
 export {
     createAppRouter,
+    resolveAppDir,
     renderPage,
     frontendApp,
     spa,
+    serve,
     start,
 } from "./app-router";
 

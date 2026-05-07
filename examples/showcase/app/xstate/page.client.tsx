@@ -1,4 +1,4 @@
-import { render } from 'melina/client';
+import { render } from 'tradjs/client';
 import { createMachine, createActor, assign } from 'xstate';
 
 // ─── Traffic Light FSM ──────────────────────────────────

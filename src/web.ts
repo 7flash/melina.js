@@ -1,13 +1,13 @@
 /**
- * Melina.js — Web Framework Entry Point
+ * TradJS — Web Framework Entry Point
  * 
  * This module re-exports everything from the server sub-modules.
  * The actual implementation lives in src/server/.
  * 
- * @module melina/web
+ * @module tradjs/web
  */
 
-console.log('🦊 [Melina] Ready');
+console.log('🦊 [tradjs] Ready');
 
 // Re-export all server functionality
 export {

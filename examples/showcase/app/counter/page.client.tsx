@@ -1,4 +1,4 @@
-import { render } from 'melina/client';
+import { render } from 'tradjs/client';
 
 let count = 0;
 

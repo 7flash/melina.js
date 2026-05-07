@@ -2,7 +2,7 @@
  * HTTP Server
  * 
  * Handles server creation, request dispatch, error handling,
- * and graceful shutdown for Melina.js applications.
+ * and graceful shutdown for Last.js applications.
  */
 
 import { unlink } from 'fs/promises';
@@ -19,12 +19,12 @@ const isDev = process.env.NODE_ENV !== "production";
 // ALWAYS log full stack traces — errors must be visible in both dev and production.
 
 process.on('unhandledRejection', (reason: any) => {
-    console.error('[Melina] Unhandled Promise Rejection (server kept alive):');
+    console.error('[tradjs] Unhandled Promise Rejection (server kept alive):');
     console.error(reason instanceof Error ? reason.stack ?? reason.message : reason);
 });
 
 process.on('uncaughtException', (error: Error) => {
-    console.error('[Melina] Uncaught Exception (server kept alive):');
+    console.error('[tradjs] Uncaught Exception (server kept alive):');
     console.error(error.stack ?? error.message);
 });
 
@@ -35,8 +35,17 @@ function generateRequestId(): string {
     return Math.random().toString(36).substring(2, 10);
 }
 
+function isAddressInUseError(error: any): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return error?.code === 'EADDRINUSE'
+        || error?.errno === 10048
+        || message.includes('EADDRINUSE')
+        || message.includes('Address already in use')
+        || message.includes('Failed to listen');
+}
+
 /**
- * Create and start a Melina HTTP server.
+ * Create and start a Last.js HTTP server.
  * 
  * Automatically determines port or unix socket from BUN_PORT env var or CLI arg.
  * Handles cleanup and graceful shutdown automatically.
@@ -45,6 +54,8 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
     // Automatic detection logic
     let port: number | undefined;
     let unix: string | undefined;
+    let shouldAutoFindPort = false;
+    let autoFindStartPort = 3000;
 
     if (options?.port !== undefined) {
         port = options.port;
@@ -59,6 +70,8 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
             const parsedPort = parseInt(bunPort, 10);
             if (!isNaN(parsedPort)) {
                 port = parsedPort;
+                shouldAutoFindPort = true;
+                autoFindStartPort = parsedPort;
             } else {
                 unix = bunPort;
             }
@@ -66,6 +79,8 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
             const parsedPort = parseInt(cliArg, 10);
             if (!isNaN(parsedPort)) {
                 port = parsedPort;
+                shouldAutoFindPort = true;
+                autoFindStartPort = parsedPort;
             } else {
                 unix = cliArg;
             }
@@ -73,7 +88,8 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
     }
 
     if (!port && !unix) {
-        port = 3000;
+        shouldAutoFindPort = true;
+        port = findAvailablePort(autoFindStartPort);
     }
 
     if (port !== undefined && unix) {
@@ -97,7 +113,6 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
 
     const args: any = {
         idleTimeout: 0,
-        reusePort: true,
         development: isDev,
         async fetch(req: Request) {
             let requestId = req.headers.get("X-Request-ID");
@@ -261,8 +276,8 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
     try {
         server = Bun.serve(args);
     } catch (err: any) {
-        if (!unix && err.code === 'EADDRINUSE') {
-            const fallbackStart = (port ?? 3000) + 1;
+        if (!unix && shouldAutoFindPort && isAddressInUseError(err)) {
+            const fallbackStart = Math.max((port ?? autoFindStartPort) + 1, autoFindStartPort + 1);
             args.port = findAvailablePort(fallbackStart);
             console.warn(`⚠️  Port ${port} in use, falling back to port ${args.port}`);
             server = Bun.serve(args);
@@ -272,9 +287,9 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
     }
 
     if (unix) {
-        console.log(`🦊 Melina server running on unix socket ${unix}`);
+        console.log(`🦊 tradjs server running on unix socket ${unix}`);
     } else {
-        console.log(`🦊 Melina server running at http://localhost:${server.port}`);
+        console.log(`🦊 tradjs server running at http://localhost:${server.port}`);
     }
 
     // Start hot reload watcher in dev mode only when explicitly enabled
@@ -298,12 +313,12 @@ export async function serve(handler: Handler, options?: { port?: number; unix?: 
 
 // ─── Port Discovery ─────────────────────────────────────────────────────────────
 
-export function findAvailablePort(startPort: number = 3001): number {
+export function findAvailablePort(startPort: number = 3000): number {
     for (let port = startPort; port < startPort + 100; port++) {
         try {
             const listener = Bun.listen({
                 port,
-                hostname: 'localhost',
+                hostname: '127.0.0.1',
                 socket: {
                     close() { },
                     data() { },
@@ -312,7 +327,7 @@ export function findAvailablePort(startPort: number = 3001): number {
             listener.stop();
             return port;
         } catch (e: any) {
-            if (!e.message.includes('EADDRINUSE') && !e.message.includes('Address already in use')) {
+            if (!isAddressInUseError(e)) {
                 throw e;
             }
         }

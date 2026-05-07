@@ -1,7 +1,18 @@
 {
     "compilerOptions": {
         "jsx": "react-jsx",
-        "jsxImportSource": "melina/client",
+        "jsxImportSource": "tradjs/client",
+        "baseUrl": "../..",
+        "paths": {
+            "tradjs": ["./src/web.ts"],
+            "tradjs/*": ["./src/*"],
+            "fastjs": ["./src/web.ts"],
+            "fastjs/*": ["./src/*"],
+            "lastjs": ["./src/web.ts"],
+            "lastjs/*": ["./src/*"],
+            "melina": ["./src/web.ts"],
+            "melina/*": ["./src/*"]
+        },
         "target": "ESNext",
         "module": "ESNext",
         "moduleResolution": "bundler",

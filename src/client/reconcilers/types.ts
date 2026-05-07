@@ -1,5 +1,5 @@
 /**
- * melina/client/reconcilers — Reconciler Strategy Interface
+ * tradjs/client/reconcilers — Reconciler Strategy Interface
  * 
  * Defines the contract that all reconcilers must implement.
  * This enables hot-swapping reconciliation strategies at build time

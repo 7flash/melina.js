@@ -4,7 +4,7 @@
  * Works in both dev and prod mode by manually populating the SSG cache
  * if it's empty (dev mode skips pre-render).
  */
-import { getPrerendered, setPrerendered } from 'melina/server';
+import { getPrerendered, setPrerendered } from 'tradjs/server';
 
 export async function GET(req: Request) {
     const iterations = 100;
@@ -12,8 +12,8 @@ export async function GET(req: Request) {
 
     // Pre-populate SSG cache if empty (dev mode doesn't pre-render)
     if (!getPrerendered('/features/ssg')) {
-        const { createElement } = await import('melina/client/render');
-        const { renderToString } = await import('melina/server/ssr');
+        const { createElement } = await import('tradjs/client/render');
+        const { renderToString } = await import('tradjs/server/ssr');
         const mod = await import('../../features/ssg/page');
         const tree = createElement(mod.default, {});
         const html = `<!DOCTYPE html>${renderToString(tree)}`;
@@ -22,8 +22,8 @@ export async function GET(req: Request) {
 
     // ── Benchmark 1: SSR (fresh render every time) ───────────────────────
     {
-        const { createElement } = await import('melina/client/render');
-        const { renderToString } = await import('melina/server/ssr');
+        const { createElement } = await import('tradjs/client/render');
+        const { renderToString } = await import('tradjs/server/ssr');
         const mod = await import('../../features/ssg/page');
 
         const times: number[] = [];
@@ -50,8 +50,8 @@ export async function GET(req: Request) {
 
     // ── Benchmark 2: Cached SSR (render once, serve from JS string) ──────
     {
-        const { createElement } = await import('melina/client/render');
-        const { renderToString } = await import('melina/server/ssr');
+        const { createElement } = await import('tradjs/client/render');
+        const { renderToString } = await import('tradjs/server/ssr');
 
         let cache: string | null = null;
         const times: number[] = [];

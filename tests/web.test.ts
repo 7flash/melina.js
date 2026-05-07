@@ -404,6 +404,160 @@ describe("asset (legacy)", () => {
 });
 
 describe("serve", () => {
+  test("should serve an app router when called with options only", async () => {
+    const appDir = path.join(testDir, "app");
+    mkdirSync(appDir, { recursive: true });
+
+    writeFileSync(path.join(appDir, "layout.tsx"), `
+      export default function RootLayout({ children }: { children: any }) {
+        return <html><head><title>Test App</title></head><body><main id="melina-page-content">{children}</main></body></html>;
+      }
+    `);
+    writeFileSync(path.join(appDir, "page.tsx"), `
+      export default function HomePage() {
+        return <h1>Options Serve</h1>;
+      }
+    `);
+
+    const server = await serve({ appDir, port: getRandomPort() });
+
+    try {
+      const response = await fetch(`http://localhost:${server.port}/`);
+      expect(response.status).toBe(200);
+      expect(await response.text()).toContain("Options Serve");
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("should fall back to root route files when app dir is absent", async () => {
+    const rootDir = path.join(testDir, "root-app");
+    mkdirSync(rootDir, { recursive: true });
+
+    writeFileSync(path.join(rootDir, "layout.tsx"), `
+      export default function RootLayout({ children }: { children: any }) {
+        return <html><head><title>Root App</title></head><body><main id="melina-page-content">{children}</main></body></html>;
+      }
+    `);
+    writeFileSync(path.join(rootDir, "page.tsx"), `
+      export default function RootPage() {
+        return <h1>Root Fallback</h1>;
+      }
+    `);
+
+    const originalCwd = process.cwd();
+    process.chdir(rootDir);
+
+    let server: any;
+    try {
+      server = await serve({ port: getRandomPort() });
+      const response = await fetch(`http://localhost:${server.port}/`);
+      expect(response.status).toBe(200);
+      expect(await response.text()).toContain("Root Fallback");
+    } finally {
+      server?.stop();
+      process.chdir(originalCwd);
+    }
+  });
+
+  test("should throw when an explicitly requested port is already in use", async () => {
+    const busyPort = getRandomPort();
+    const listener = Bun.listen({
+      port: busyPort,
+      hostname: "127.0.0.1",
+      socket: {
+        close() { },
+        data() { },
+      },
+    });
+
+    try {
+      await expect(serve(() => "OK", { port: busyPort })).rejects.toThrow();
+    } finally {
+      listener.stop();
+    }
+  });
+
+  test("should find the next available port from 3000 when no port is passed", async () => {
+    let listener: any;
+    try {
+      listener = Bun.listen({
+        port: 3000,
+        hostname: "127.0.0.1",
+        socket: {
+          close() { },
+          data() { },
+        },
+      });
+    } catch (error: any) {
+      if (error?.code === "EACCES") {
+        console.log("⏭️  Skipping port-3000 fallback test because this environment denies binding 127.0.0.1:3000");
+        return;
+      }
+      throw error;
+    }
+
+    const originalArgv = [...process.argv];
+    const originalBunPort = process.env.BUN_PORT;
+    delete process.env.BUN_PORT;
+    process.argv = process.argv.slice(0, 2);
+
+    let server: any;
+    try {
+      server = await serve(() => "OK");
+      expect(server.port).toBeGreaterThan(3000);
+
+      const response = await fetch(`http://localhost:${server.port}/`);
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("OK");
+    } finally {
+      server?.stop();
+      process.argv = originalArgv;
+      if (originalBunPort === undefined) {
+        delete process.env.BUN_PORT;
+      } else {
+        process.env.BUN_PORT = originalBunPort;
+      }
+      listener.stop();
+    }
+  });
+
+  test("should treat BUN_PORT as implicit and fall forward when busy", async () => {
+    const startPort = getRandomPort();
+    const listener = Bun.listen({
+      port: startPort,
+      hostname: "127.0.0.1",
+      socket: {
+        close() { },
+        data() { },
+      },
+    });
+
+    const originalArgv = [...process.argv];
+    const originalBunPort = process.env.BUN_PORT;
+    process.env.BUN_PORT = String(startPort);
+    process.argv = process.argv.slice(0, 2);
+
+    let server: any;
+    try {
+      server = await serve(() => "OK");
+      expect(server.port).toBeGreaterThan(startPort);
+
+      const response = await fetch(`http://localhost:${server.port}/`);
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("OK");
+    } finally {
+      server?.stop();
+      process.argv = originalArgv;
+      if (originalBunPort === undefined) {
+        delete process.env.BUN_PORT;
+      } else {
+        process.env.BUN_PORT = originalBunPort;
+      }
+      listener.stop();
+    }
+  });
+
   test("should create a server and handle string responses", async () => {
     const handler = () => "<h1>Hello World</h1>";
     const server = await serve(handler, { port: getRandomPort() });

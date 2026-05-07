@@ -7,7 +7,7 @@
  * 
  * Usage in page components:
  * ```tsx
- * import { Head } from 'melina/web';
+ * import { Head } from 'tradjs/web';
  * 
  * export default function AboutPage() {
  *   return (

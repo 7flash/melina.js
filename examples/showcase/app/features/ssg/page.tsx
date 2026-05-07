@@ -122,7 +122,7 @@ export const ssg = { revalidate: 60 }; // refresh every minute
 //    (deploy = instant cache refresh)
 
 // 3. Programmatic — clear from API route or middleware
-import { clearSSGCache } from 'melina/server';
+import { clearSSGCache } from 'tradjs/server';
 
 // API route to purge cache
 export async function POST(req: Request) {

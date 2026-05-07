@@ -1,14 +1,14 @@
-# Melina.js 🦊
+# TradJS 🦊
 
 **Bun-native web framework — server-rendered JSX + lightweight client runtime**
 
-[![npm version](https://img.shields.io/npm/v/melina)](https://www.npmjs.com/package/melina)
+[![npm version](https://img.shields.io/npm/v/tradjs)](https://www.npmjs.com/package/tradjs)
 [![Tests](https://github.com/7flash/melina.js/actions/workflows/test.yml/badge.svg)](https://github.com/7flash/melina.js/actions/workflows/test.yml)
 [![Bun](https://img.shields.io/badge/runtime-Bun-f9f1e1)](https://bun.sh)
 
-Melina.js is a web framework built for Bun. Pages are **server-rendered JSX** — write components that run on the server, render to HTML, and arrive at the browser instantly. Client interactivity is added via **mount scripts** — small `.client.tsx` files that hydrate specific parts of the page with a zero-dependency ~2KB VDOM runtime.
+TradJS is a Bun-native web framework inspired by Next.js's file-based routing, nested layouts, and server-rendered JSX model, but without requiring React as the client runtime.
 
-No React on the client. No hydration mismatch. No bundle bloat.
+You keep the familiar folder structure and JSX ergonomics, then decide manually what should re-render on the client and when. Mount scripts stay small, explicit, and flexible, closer to traditional JavaScript control than declarative React.
 
 ```
   Server (Bun)                 Browser
@@ -44,20 +44,18 @@ No React on the client. No hydration mismatch. No bundle bloat.
 
 ```bash
 # Create a new project
-npx melina init my-app
+npx tradjs init my-app
 cd my-app
 bun install
-bun run server.ts
+tradjs serve --hot-reload
 ```
 
-Or from scratch:
+Or from scratch with no `server.ts`:
 
 ```ts
-// server.ts
-import { start } from 'melina';
+import { serve } from 'tradjs';
 
-await start({
-  appDir: './app',
+await serve({
   port: 3000,
   defaultTitle: 'My App',
 });
@@ -83,7 +81,6 @@ my-app/
 │   └── api/
 │       └── messages/
 │           └── route.ts        # API: /api/messages
-├── server.ts
 └── package.json
 ```
 
@@ -118,7 +115,7 @@ A `page.client.tsx` file adds interactivity to server-rendered HTML. Export a de
 
 ```tsx
 // app/counter/page.client.tsx
-import { render } from 'melina/client';
+import { render } from 'tradjs/client';
 
 function Counter({ count, onIncrement }: { count: number; onIncrement: () => void }) {
   return (
@@ -175,7 +172,7 @@ export default function RootLayout({ children }: { children: any }) {
 Declarative per-page head management during SSR:
 
 ```tsx
-import { Head } from 'melina/web';
+import { Head } from 'tradjs/web';
 
 export default function AboutPage() {
   return (
@@ -306,30 +303,35 @@ Built-in Tailwind CSS v4 + PostCSS. Add `globals.css` in the app directory:
 }
 ```
 
-Melina auto-discovers `globals.css`, `global.css`, or `app.css`.
+TradJS auto-discovers `globals.css`, `global.css`, or `app.css`.
 
 ## API Reference
 
-### `start(options)`
+### `serve(options)`
 
-High-level entry point:
+High-level convention-based entry point:
 
 ```ts
-import { start } from 'melina';
+import { serve } from 'tradjs';
 
-await start({
-  appDir: './app',
+await serve({
   port: 3000,
   defaultTitle: 'My App',
 });
 ```
+
+`serve()` looks for `./app` first. If there is no `app/` directory, it falls back to route files in the current directory such as `page.tsx`, `layout.tsx`, and `api/`.
+
+### `start(options)`
+
+Compatibility alias for `serve(options)`.
 
 ### `serve(handler, options)` + `createAppRouter(options)`
 
 Lower-level API for custom setups:
 
 ```ts
-import { serve, createAppRouter } from 'melina';
+import { serve, createAppRouter } from 'tradjs';
 
 const handler = createAppRouter({
   appDir: './app',
@@ -345,7 +347,7 @@ serve(handler, { port: 3000 });
 The entire client API:
 
 ```ts
-import { render, createElement } from 'melina/client';
+import { render, createElement } from 'tradjs/client';
 
 render(<MyComponent />, document.getElementById('root'));
 ```
@@ -353,8 +355,8 @@ render(<MyComponent />, document.getElementById('root'));
 ### CLI
 
 ```bash
-npx melina init <project-name>   # Create new project from template
-npx melina start                 # Start dev server
+npx tradjs init <project-name>   # Create new project from template
+npx tradjs serve --hot-reload    # Start dev server
 ```
 
 ## Showcase
@@ -420,7 +422,7 @@ If you need truly dynamic, per-request data (user-specific content, authenticate
 
 #### Why no built-in hot reload
 
-We run the server with `bun run server.ts`. When you change a file, you restart. This takes **~10ms** with Bun's startup speed.
+We run the server with `tradjs serve`. When you change a file, you restart. This takes **~10ms** with Bun's startup speed.
 
 A file watcher would add:
 - `fs.watch` complexity (platform-specific bugs, especially on Windows)

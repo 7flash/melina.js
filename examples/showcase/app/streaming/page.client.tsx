@@ -1,4 +1,4 @@
-import { render } from 'melina/client';
+import { render } from 'tradjs/client';
 
 type StreamEvent = {
     id: number;

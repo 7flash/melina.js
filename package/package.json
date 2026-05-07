@@ -1,10 +1,13 @@
 {
-  "name": "melina",
-  "version": "2.3.4",
-  "description": "A lightweight web framework for Bun with Next.js-style routing and zero-config builds.",
+  "name": "tradjs",
+  "version": "2.5.8",
+  "description": "A Next.js-inspired Bun framework with file-based routing, server-rendered JSX, and a flexible client runtime.",
   "module": "./src/web.ts",
   "main": "./src/web.ts",
   "bin": {
+    "tradjs": "./bin/melina.ts",
+    "fastjs": "./bin/melina.ts",
+    "lastjs": "./bin/melina.ts",
     "melina": "./bin/melina.ts"
   },
   "files": [
@@ -36,7 +39,7 @@
     "url": "https://github.com/7flash/melina.js"
   },
   "author": {
-    "name": "Melina.js Contributors"
+    "name": "TradJS Contributors"
   },
   "bugs": "https://github.com/7flash/melina.js/issues",
   "homepage": "https://github.com/7flash/melina.js#readme",
@@ -51,7 +54,7 @@
     "jsx",
     "app-router",
     "view-transitions",
-    "melina"
+    "tradjs"
   ],
   "type": "module",
   "private": false,
@@ -60,7 +63,7 @@
     "@types/bun": "latest",
     "@types/jsdom": "^28.0.0",
     "jsdom": "^28.1.0",
-    "melina": "link:."
+    "tradjs": "link:."
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.10",

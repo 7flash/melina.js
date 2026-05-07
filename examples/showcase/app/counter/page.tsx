@@ -38,7 +38,7 @@ export default function CounterPage() {
             <div className="demo-card">
                 <h3 className="demo-card-title">📝 How It Works</h3>
                 <div className="code-block">{`// app/counter/page.client.tsx
-import { render } from 'melina/client';
+import { render } from 'tradjs/client';
 
 let count = 0;
 

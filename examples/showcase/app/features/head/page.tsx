@@ -1,4 +1,4 @@
-import { Head } from 'melina/web';
+import { Head } from 'tradjs/web';
 
 export default function HeadDemoPage() {
     return (
@@ -38,7 +38,7 @@ export default function HeadDemoPage() {
 // and you can't change it from a page
 
 // ✅ With <Head> — each page controls its own head tags
-import { Head } from 'melina/web';
+import { Head } from 'tradjs/web';
 
 export default function AboutPage() {
   return (
